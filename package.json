@@ -1,7 +1,7 @@
 {
   "name": "session-triage",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "See which Paseo sessions need your input, are still working, or are done.",
   "files": [
     "paseo-plugin.json",
@@ -12,7 +12,8 @@
     "index.server.tsx",
     "client/",
     "server/",
-    "shared/"
+    "shared/",
+    "assets/"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
