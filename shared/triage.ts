@@ -55,38 +55,38 @@ export const triageSnapshotRpc = defineRpc({
 export const TRIAGE_DISPLAY: Record<TriageState, { emoji: string; label: string; description: string }> = {
   error: {
     emoji: "🔴",
-    label: "오류",
-    description: "Paseo가 에이전트 오류 상태 또는 마지막 오류를 보고했습니다. 오류 내용을 확인하세요.",
+    label: "Error",
+    description: "Paseo reports an agent error.",
   },
   "needs-action": {
     emoji: "❓",
-    label: "응답 필요",
-    description: "대기 중인 권한 요청이 있거나 사람의 판단·확인을 명시적으로 요청했습니다. 직접 답해주세요.",
+    label: "Needs your input",
+    description: "A permission request is pending, or the agent has asked you to decide or reply.",
   },
   "ready-to-send": {
     emoji: "📤",
-    label: "보내기 대기",
-    description: "보내거나 게시할 초안이 준비된 것으로 보입니다. 검토 후 직접 전송하세요.",
+    label: "Ready to send",
+    description: "A draft appears ready. Review it before sending or posting.",
   },
   "needs-you": {
     emoji: "🟠",
-    label: "확인 필요",
-    description: "미완료이거나 최근 상태가 불명확합니다. 세션을 확인하세요.",
+    label: "Needs review",
+    description: "The work is unfinished, or the latest update is unclear.",
   },
   checking: {
     emoji: "👀",
-    label: "결과 확인 중",
-    description: "CI·빌드·테스트·배포·리뷰 같은 외부 결과를 기다리는 것으로 보입니다.",
+    label: "Waiting on a result",
+    description: "The agent appears to be waiting for CI, a build, a deployment, or a review.",
   },
   working: {
     emoji: "⏳",
-    label: "작업 중",
-    description: "에이전트가 현재 턴을 실행 중이거나 초기화 중입니다.",
+    label: "Working",
+    description: "The agent is running a turn or starting up.",
   },
   done: {
     emoji: "✅",
-    label: "완료",
-    description: "최근 응답에 완료 표현이 있습니다. 실제 결과는 직접 확인하세요.",
+    label: "Done",
+    description: "The latest reply says the work is done. Check the result yourself.",
   },
 };
 

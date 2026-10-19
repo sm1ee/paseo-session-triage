@@ -24,7 +24,7 @@ const COMPLETED = /(?:완료했|완료됐|완료되었|수정했|구현했|통�
 
 function compact(value: string, limit = 180): string {
   const plain = value
-    .replace(/```[\s\S]*?```/gu, "[코드]")
+    .replace(/```[\s\S]*?```/gu, "[code]")
     .replace(/\[[^\]]+\]\([^)]*\)/gu, (link) => link.slice(1, link.indexOf("]")))
     .replace(/[\r\n\t]+/gu, " ")
     .replace(/\s+/gu, " ")
@@ -71,46 +71,46 @@ export function classifyAgent(
   }
 
   if (agent.status === "error") {
-    return row("error", compact(agent.lastError || "에이전트 오류"), "오류를 확인해주세요.", "metadata");
+    return row("error", compact(agent.lastError || "Agent error"), "Open the session to see the error.", "metadata");
   }
   const permission = agent.pendingPermissions[0];
   if (permission) {
     return row(
       "needs-action",
-      compact(permission.title || permission.description || "권한 또는 답변을 기다립니다."),
-      "Paseo에서 요청을 확인하고 답해주세요.",
+      compact(permission.title || permission.description || "Waiting for permission or a reply."),
+      "Review the request in Paseo.",
       "metadata",
     );
   }
   if (agent.activeTurn || agent.status === "initializing") {
-    return row("working", "에이전트가 현재 턴을 실행 중입니다.", "", "metadata");
+    return row("working", "The agent is working or starting up.", "", "metadata");
   }
   if (timelineError) {
-    return row("needs-you", "최근 대화를 읽지 못했습니다.", "세션을 직접 확인해주세요.", "fallback");
+    return row("needs-you", "Could not read the latest messages.", "Open the session to check its status.", "fallback");
   }
 
   const message = recentAssistantText(timeline);
   if (!message) {
     if (agent.lastError) {
-      return row("error", compact(agent.lastError), "오류를 확인해주세요.", "metadata");
+      return row("error", compact(agent.lastError), "Open the session to see the error.", "metadata");
     }
-    return row("needs-you", "최근 완료 응답이 없습니다.", "세션을 확인해주세요.", "fallback");
+    return row("needs-you", "No recent reply from the agent.", "Open the session to check its status.", "fallback");
   }
   const summary = compact(message);
   if (SEND_DRAFT.test(message) && SEND_ACTION.test(message) && SEND_READY.test(message)) {
-    return row("ready-to-send", summary, "초안을 검토하고 직접 전송하거나 게시해주세요.", "recent-message");
+    return row("ready-to-send", summary, "Review the draft before sending or posting it.", "recent-message");
   }
   if (HUMAN_ACTION.test(message)) {
-    return row("needs-action", summary, "요청된 판단이나 확인을 해주세요.", "recent-message");
+    return row("needs-action", summary, "Reply in the session.", "recent-message");
   }
   if (WAITING.test(message) && EXTERNAL_CHECK.test(message)) {
-    return row("checking", summary, "외부 작업의 결과를 기다리는 중입니다.", "recent-message");
+    return row("checking", summary, "Waiting for an outside result.", "recent-message");
   }
   if (INCOMPLETE.test(message)) {
-    return row("needs-you", summary, "남은 작업이나 차단 원인을 확인해주세요.", "recent-message");
+    return row("needs-you", summary, "Check what remains.", "recent-message");
   }
   if (COMPLETED.test(message)) {
     return row("done", summary, "", "recent-message");
   }
-  return row("needs-you", summary, "상태가 명확하지 않아 직접 확인이 필요합니다.", "fallback");
+  return row("needs-you", summary, "Open the session for context.", "fallback");
 }

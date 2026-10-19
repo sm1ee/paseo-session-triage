@@ -1,7 +1,7 @@
 {
   "id": "session-triage",
   "name": "Session triage",
-  "description": "Shows which Paseo sessions need a person, are working, or are done.",
+  "description": "See which Paseo sessions need your input, are still working, or are done.",
   "media": [],
   "requirements": {
     "paseo": ">=0.11.4"

@@ -17,23 +17,23 @@ function TriageItem({ currentScreen, openScreen, theme }: PluginSidebarItemProps
 }
 
 export default function contribute(client: PluginClientContext) {
-  const removeScreen = client.addScreen({ id: "triage", title: "세션 확인", Component: TriageScreen });
+  const removeScreen = client.addScreen({ id: "triage", title: "Session triage", Component: TriageScreen });
   const removeSidebar = client.addSidebarHeaderItem({
     id: "triage",
-    title: "세션 확인",
+    title: "Session triage",
     Component: TriageItem,
   });
   const removeSettings = client.addSettingsScreen({
     id: "triage-settings",
-    title: "Session triage 설정",
+    title: "Session triage settings",
     icon: "Settings",
     Component: TriageSettingsScreen,
   });
   const removeCommand = client.addCommandCenterItem({
     id: "open-triage",
-    title: "세션 확인 목록 열기",
+    title: "Open session triage",
     icon: "ListTodo",
-    keywords: ["triage", "sessions", "확인", "세션"],
+    keywords: ["triage", "sessions", "status"],
     context: "global",
     onSelect({ openScreen }) {
       openScreen({ screenId: "triage" });

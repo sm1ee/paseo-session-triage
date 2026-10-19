@@ -6,15 +6,15 @@ import { triagePreferences } from "../shared/triage";
 export function TriageSettingsScreen() {
   const settings = useSettings(triagePreferences);
   if (settings.status !== "ready") {
-    return <Text>{settings.status === "loading" ? "설정을 불러오는 중…" : "설정을 읽지 못했습니다."}</Text>;
+    return <Text>{settings.status === "loading" ? "Loading settings…" : "Could not load settings."}</Text>;
   }
 
   return (
     <View style={{ gap: 16 }}>
-      <SettingsSection title="세션 범위">
+      <SettingsSection title="Sessions">
         <SettingsCard>
           <SettingsSelect
-            label="최대 세션 수"
+            label="Maximum sessions"
             value={String(settings.values.maxSessions)}
             options={[20, 40, 60, 100].map((value) => ({ label: String(value), value: String(value) }))}
             onValueChange={(value) =>
@@ -22,8 +22,8 @@ export function TriageSettingsScreen() {
             }
           />
           <SettingsSwitch
-            label="하위 에이전트 포함"
-            hint="기본값은 최상위 세션만 표시합니다."
+            label="Include subagents"
+            hint="Off by default."
             value={settings.values.includeSubagents}
             onValueChange={(value) =>
               void settings.save({ ...settings.values, includeSubagents: value }, settings.revision)
@@ -31,11 +31,11 @@ export function TriageSettingsScreen() {
           />
         </SettingsCard>
       </SettingsSection>
-      <SettingsSection title="이름">
+      <SettingsSection title="Names">
         <SettingsCard>
           <SettingsSwitch
-            label="상태 이모지로 세션·워크스페이스 이름 갱신"
-            hint="고정 목록은 워크스페이스 이름을 표시하므로 함께 갱신합니다. 끄더라도 이전 이름은 자동 복원되지 않습니다."
+            label="Add status emoji to session and workspace names"
+            hint="Pinned items show workspace names. Turning this off does not restore names already changed."
             value={settings.values.renameTitles}
             onValueChange={(value) =>
               void settings.save({ ...settings.values, renameTitles: value }, settings.revision)

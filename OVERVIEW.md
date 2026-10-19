@@ -1,17 +1,21 @@
 # Session triage
 
-Paseo의 여러 세션을 한 화면에 모아 확인이 필요한 순서로 보여줍니다. 상태는 🔴 오류, ❓ 응답 필요, 📤 보내기 대기, 🟠 확인 필요, 👀 결과 확인 중, ⏳ 작업 중, ✅ 완료의 일곱 가지입니다. 항목을 누르면 해당 세션으로 이동합니다.
+See the Paseo sessions that need your attention in one place. Open a session from the list, or check the attention count in the sidebar.
 
-- 🔴 오류: Paseo가 에이전트 오류 상태 또는 마지막 오류를 보고했습니다. 오류 내용을 확인하세요.
-- ❓ 응답 필요: 대기 중인 권한 요청이 있거나 사람의 판단·확인을 명시적으로 요청했습니다. 직접 답해주세요.
-- 📤 보내기 대기: 보내거나 게시할 초안이 준비된 것으로 보입니다. 검토 후 직접 전송하세요.
-- 🟠 확인 필요: 미완료이거나 최근 상태가 불명확합니다. 세션을 확인하세요.
-- 👀 결과 확인 중: CI·빌드·테스트·배포·리뷰 같은 외부 결과를 기다리는 것으로 보입니다.
-- ⏳ 작업 중: 에이전트가 현재 턴을 실행 중이거나 초기화 중입니다.
-- ✅ 완료: 최근 응답에 완료 표현이 있습니다. 실제 결과는 직접 확인하세요.
+The icons mean:
 
-플러그인은 최근 변경된 최상위 세션의 짧은 대화 구간과 Paseo 상태를 읽습니다. 화면이나 사이드바가 열려 있는 동안 변경 이벤트와 15분 주기로 다시 확인하며, 화면의 새로고침 버튼으로 즉시 확인할 수도 있습니다. 설정에서 하위 에이전트를 포함하거나 표시할 최대 세션 수를 변경할 수 있습니다.
+- 🔴 **Error:** Paseo reports an agent error.
+- ❓ **Needs your input:** A permission request is pending, or the agent asks for a decision or reply.
+- 📤 **Ready to send:** A draft appears ready for you to review and send.
+- 🟠 **Needs review:** The work is unfinished, or the latest update is unclear.
+- 👀 **Waiting on a result:** The agent appears to be waiting for CI, a build, a deployment, or a review.
+- ⏳ **Working:** The agent is running a turn or starting up.
+- ✅ **Done:** The latest reply says the work is done. Check the result yourself.
 
-상태 이모지를 이름에 붙이는 기능은 기본적으로 꺼져 있습니다. 설정에서 켜면 플러그인이 설치된 호스트의 Paseo CLI로 세션 이름을 갱신하고, 고정 목록에 보이는 워크스페이스 이름도 Paseo API로 갱신합니다. 한 워크스페이스에 여러 최상위 세션이 있으면 확인한 세션 중 우선순위가 가장 높은 상태를 표시합니다. 기능을 끄더라도 변경된 이름은 자동으로 복원되지 않습니다. 메시지 전송, 권한 승인, 세션 중지, 아카이브는 하지 않습니다.
+Session triage reads the current Paseo state and a short stretch of each recently changed session's timeline. Pending permissions and errors come from Paseo. Labels inferred from chat wording can be wrong; ✅ does not verify a build, test, deployment, or submission.
 
-최근 메시지는 플러그인 프로세스의 메모리에서만 분류하며 별도 모델이나 외부 서비스로 보내지 않습니다. 권한 요청은 Paseo에 실제로 대기 중인 요청을 기준으로 하고, 대화 속 판단·확인 요청은 문구를 바탕으로 추정합니다. 특히 ✅ 표시는 빌드, 테스트, 외부 제출 또는 실제 작업 결과를 검증했다는 뜻이 아닙니다. 모호한 응답과 읽기 실패는 🟠로 표시합니다. Paseo 0.11.4 이상이 필요합니다.
+By default, it shows the 20 most recent top-level sessions. Settings let you include subagents and change the limit. The screen and sidebar check for updates while open, and you can refresh the list yourself.
+
+Title updates are optional and off by default. If enabled, the plugin adds an emoji to session names through the local Paseo CLI and to workspace names through the Paseo API. Turning the option off does not restore names already changed. It does not send messages, approve permissions, stop agents, delete sessions, or archive them.
+
+Conversation excerpts stay in the plugin's memory. They are not sent to another model or external service. Settings are stored by Paseo. Requires Paseo 0.11.4 or later.
