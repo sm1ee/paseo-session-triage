@@ -143,7 +143,7 @@ describe("TriageService", () => {
     const reviewAgent = {
       ...agent,
       id: "agent-5",
-      title: "🟠 〖app〗검토",
+      title: "❓ 〖app〗검토",
       status: "running",
       activeTurn: null,
       pendingPermissions: [{ id: "permission-5", kind: "tool", title: "검토 필요" }],
@@ -184,7 +184,7 @@ describe("TriageService", () => {
       expect(renameCount).toBe(1);
       includeError = false;
       await service.snapshot(api, true);
-      expect(workspaceName).toBe("🟠 작업");
+      expect(workspaceName).toBe("❓ 작업");
       expect(renameCount).toBe(2);
     } finally {
       service.stop();

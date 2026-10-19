@@ -18,7 +18,7 @@ const SEND_ACTION = /(?:보내|전송|발송|게시|제출|send|submit|publish|p
 const SEND_READY = /(?:완성|작성|준비|검토|확인|대기|ready|prepared|review|approve|確認|完成|待ち)/iu;
 const WAITING = /(?:대기|기다리|확인 중|진행 중|waiting|awaiting|monitoring|pending|確認中|待ち)/iu;
 const EXTERNAL_CHECK = /(?:\bCI\b|빌드|테스트 결과|배포 결과|리뷰 결과|build|test result|deploy(?:ment)?|review result|パイプライン|ビルド)/iu;
-const HUMAN_ACTION = /(?:승인|결정|확인 부탁|검토 부탁|답변 부탁|직접 .*필요|보내 주세요|제출해 주세요|needs? (?:your|human)|please (?:review|approve|decide)|your approval|manual step|判断|承認|確認してください)/iu;
+const HUMAN_ACTION = /(?:(?:승인|결정|판단|확인|검토|답변)(?:을|를|이|가)?\s*(?:부탁|필요|대기|해\s*(?:주(?:세요|십시오)?|줘))|보내 주세요|제출해 주세요|needs? (?:your|human)|please (?:review|approve|decide)|your approval|manual step|判断してください|承認してください|確認してください)/iu;
 const INCOMPLETE = /(?:미완|남아 있|필요합니다|불가|실패|보류|추가 검증|못했습니다|not (?:yet |fully )?(?:done|complete|verified)|incomplete|blocked|failed|pending action|未完|要確認)/iu;
 const COMPLETED = /(?:완료했|완료됐|완료되었|수정했|구현했|통과했|끝났|completed|finished|implemented|fixed|passed|done\b|完了|修正済み)/iu;
 
@@ -76,7 +76,7 @@ export function classifyAgent(
   const permission = agent.pendingPermissions[0];
   if (permission) {
     return row(
-      "needs-you",
+      "needs-action",
       compact(permission.title || permission.description || "권한 또는 답변을 기다립니다."),
       "Paseo에서 요청을 확인하고 답해주세요.",
       "metadata",
@@ -101,7 +101,7 @@ export function classifyAgent(
     return row("ready-to-send", summary, "초안을 검토하고 직접 전송하거나 게시해주세요.", "recent-message");
   }
   if (HUMAN_ACTION.test(message)) {
-    return row("needs-you", summary, "요청된 판단이나 확인을 해주세요.", "recent-message");
+    return row("needs-action", summary, "요청된 판단이나 확인을 해주세요.", "recent-message");
   }
   if (WAITING.test(message) && EXTERNAL_CHECK.test(message)) {
     return row("checking", summary, "외부 작업의 결과를 기다리는 중입니다.", "recent-message");

@@ -14,8 +14,9 @@ export const triagePreferences = defineSettings({
 
 export const triageStateSchema = z.enum([
   "error",
-  "needs-you",
+  "needs-action",
   "ready-to-send",
+  "needs-you",
   "checking",
   "working",
   "done",
@@ -23,7 +24,7 @@ export const triageStateSchema = z.enum([
 
 export type TriageState = z.infer<typeof triageStateSchema>;
 
-export const TRIAGE_TITLE_PREFIX = /^[🔴🟠📤👀⏳✅]\s*/u;
+export const TRIAGE_TITLE_PREFIX = /^[🔴❓🟠📤👀⏳✅]\s*/u;
 
 export const triageRowSchema = z.object({
   id: z.string(),
@@ -57,15 +58,20 @@ export const TRIAGE_DISPLAY: Record<TriageState, { emoji: string; label: string;
     label: "오류",
     description: "Paseo가 에이전트 오류 상태 또는 마지막 오류를 보고했습니다. 오류 내용을 확인하세요.",
   },
-  "needs-you": {
-    emoji: "🟠",
-    label: "확인 필요",
-    description: "권한 요청·미완료·판단 요청이 있거나 상태가 불명확합니다. 세션을 확인하세요.",
+  "needs-action": {
+    emoji: "❓",
+    label: "응답 필요",
+    description: "대기 중인 권한 요청이 있거나 사람의 판단·확인을 명시적으로 요청했습니다. 직접 답해주세요.",
   },
   "ready-to-send": {
     emoji: "📤",
     label: "보내기 대기",
     description: "보내거나 게시할 초안이 준비된 것으로 보입니다. 검토 후 직접 전송하세요.",
+  },
+  "needs-you": {
+    emoji: "🟠",
+    label: "확인 필요",
+    description: "미완료이거나 최근 상태가 불명확합니다. 세션을 확인하세요.",
   },
   checking: {
     emoji: "👀",
@@ -86,8 +92,9 @@ export const TRIAGE_DISPLAY: Record<TriageState, { emoji: string; label: string;
 
 export const TRIAGE_ORDER: readonly TriageState[] = [
   "error",
-  "needs-you",
+  "needs-action",
   "ready-to-send",
+  "needs-you",
   "checking",
   "working",
   "done",

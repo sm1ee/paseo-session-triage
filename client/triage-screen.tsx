@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { TRIAGE_DISPLAY, TRIAGE_ORDER, TRIAGE_TITLE_PREFIX, triageSnapshotRpc, type TriageRow } from "../shared/triage";
 
-const QUERY_KEY = ["session-triage", "snapshot", 2] as const;
+const QUERY_KEY = ["session-triage", "snapshot", 3] as const;
 
 function TriageCard({
   row,
@@ -120,7 +120,7 @@ export function TriageScreen({ theme, layout, navigation }: PluginScreenProps) {
           </Text>
         ))}
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>
-          최근 대화와 Paseo 상태로 추정합니다. ✅도 빌드·테스트·제출 결과를 검증했다는 뜻은 아닙니다.
+          권한 요청은 Paseo 대기 상태를 확인하고, 판단 요청은 대화 문구로 추정합니다. ✅는 실제 결과를 검증했다는 뜻이 아닙니다.
         </Text>
       </View>
 
@@ -175,5 +175,7 @@ export function useTriageAttentionCount() {
     staleTime: 30_000,
     retry: false,
   });
-  return query.data?.rows.filter((row) => row.state === "error" || row.state === "needs-you" || row.state === "ready-to-send").length ?? 0;
+  return query.data?.rows.filter((row) =>
+    row.state === "error" || row.state === "needs-action" || row.state === "ready-to-send" || row.state === "needs-you"
+  ).length ?? 0;
 }

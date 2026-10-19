@@ -40,7 +40,7 @@ describe("classifyAgent", () => {
       activeTurn: { turnId: "turn-1", startedAt: null },
       pendingPermissions: [{ kind: "tool", title: "도구 실행 승인" }],
     });
-    expect(row.state).toBe("needs-you");
+    expect(row.state).toBe("needs-action");
     expect(row.summary).toContain("도구 실행 승인");
   });
 
@@ -56,6 +56,12 @@ describe("classifyAgent", () => {
       .toBe("ready-to-send");
     expect(classifyAgent(base, exchange("CI 빌드 결과를 기다리는 중입니다.")).state)
       .toBe("checking");
+  });
+
+  it("marks explicit human requests but not completed approvals as needing a response", () => {
+    expect(classifyAgent(base, exchange("승인해 주세요.")).state).toBe("needs-action");
+    expect(classifyAgent(base, exchange("판단해 주세요.")).state).toBe("needs-action");
+    expect(classifyAgent(base, exchange("승인 완료했습니다.")).state).toBe("done");
   });
 
   it("keeps incomplete or unclear work visible for review", () => {
@@ -93,5 +99,12 @@ describe("desiredTitle", () => {
     expect(desiredTitle(row)).toBe("🟠 〖my-app〗릴리스 확인");
     expect(desiredWorkspaceTitle(row, { name: "🔴 릴리스 확인", title: "🔴 릴리스 확인" }))
       .toBe("🟠 릴리스 확인");
+  });
+
+  it("replaces an orange review marker when a response is requested", () => {
+    const row = classifyAgent({ ...base, title: "🟠 릴리스 확인" }, exchange("검토해 주세요."));
+    expect(desiredTitle(row)).toBe("❓ 〖my-app〗릴리스 확인");
+    expect(desiredWorkspaceTitle(row, { name: "🟠 릴리스 확인", title: "🟠 릴리스 확인" }))
+      .toBe("❓ 릴리스 확인");
   });
 });
