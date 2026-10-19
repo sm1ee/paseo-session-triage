@@ -48,12 +48,32 @@ export const triageSnapshotRpc = defineRpc({
   }),
 });
 
-export const TRIAGE_DISPLAY: Record<TriageState, { emoji: string; label: string }> = {
-  "needs-you": { emoji: "🔴", label: "확인 필요" },
-  "ready-to-send": { emoji: "📤", label: "보내기 대기" },
-  checking: { emoji: "👀", label: "결과 확인 중" },
-  working: { emoji: "⏳", label: "작업 중" },
-  done: { emoji: "✅", label: "완료" },
+export const TRIAGE_DISPLAY: Record<TriageState, { emoji: string; label: string; description: string }> = {
+  "needs-you": {
+    emoji: "🔴",
+    label: "확인 필요",
+    description: "권한 요청·오류·미완료·판단 요청이 있거나 상태가 불명확합니다. 세션을 확인하세요.",
+  },
+  "ready-to-send": {
+    emoji: "📤",
+    label: "보내기 대기",
+    description: "보내거나 게시할 초안이 준비된 것으로 보입니다. 검토 후 직접 전송하세요.",
+  },
+  checking: {
+    emoji: "👀",
+    label: "결과 확인 중",
+    description: "CI·빌드·테스트·배포·리뷰 같은 외부 결과를 기다리는 것으로 보입니다.",
+  },
+  working: {
+    emoji: "⏳",
+    label: "작업 중",
+    description: "에이전트가 현재 턴을 실행 중이거나 초기화 중입니다.",
+  },
+  done: {
+    emoji: "✅",
+    label: "완료",
+    description: "최근 응답에 완료 표현이 있습니다. 실제 결과는 직접 확인하세요.",
+  },
 };
 
 export const TRIAGE_ORDER: readonly TriageState[] = [

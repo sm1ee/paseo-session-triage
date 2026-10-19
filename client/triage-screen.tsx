@@ -107,6 +107,23 @@ export function TriageScreen({ theme, layout, navigation }: PluginScreenProps) {
         </Pressable>
       </View>
 
+      <View style={{ padding: 14, borderRadius: 12, backgroundColor: theme.colors.surface1, gap: 7 }}>
+        <Text style={{ color: theme.colors.foreground, fontSize: 14, fontWeight: "700" }}>
+          이모지 뜻
+        </Text>
+        {TRIAGE_ORDER.map((state) => (
+          <Text key={state} style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>
+            <Text style={{ color: theme.colors.foreground, fontWeight: "600" }}>
+              {TRIAGE_DISPLAY[state].emoji} {TRIAGE_DISPLAY[state].label}
+            </Text>
+            {` · ${TRIAGE_DISPLAY[state].description}`}
+          </Text>
+        ))}
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>
+          최근 대화와 Paseo 상태로 추정합니다. ✅도 빌드·테스트·제출 결과를 검증했다는 뜻은 아닙니다.
+        </Text>
+      </View>
+
       {query.isPending ? <Text style={{ color: theme.colors.foregroundMuted }}>세션을 읽는 중…</Text> : null}
       {query.error ? <Text style={{ color: theme.colors.foreground }}>조회 실패: {String(query.error)}</Text> : null}
       {refreshError ? <Text style={{ color: theme.colors.foreground }}>새로고침 실패: {refreshError}</Text> : null}
@@ -145,9 +162,6 @@ export function TriageScreen({ theme, layout, navigation }: PluginScreenProps) {
       {!query.isPending && !query.error && rows.length === 0 ? (
         <Text style={{ color: theme.colors.foregroundMuted }}>표시할 세션이 없습니다.</Text>
       ) : null}
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
-        상태는 최근 대화로 추정합니다. 완료 표시는 작업의 증명이 아니므로 필요한 결과물은 세션에서 확인하세요.
-      </Text>
     </ScrollView>
   );
 }
