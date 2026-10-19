@@ -2,7 +2,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { promisify } from "node:util";
-import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
+import type { PaseoAgent, PaseoApi, PaseoWorkspace } from "@getpaseo/client";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import type { PluginSettings } from "@getpaseo/plugin/server";
 import { TRIAGE_DISPLAY, TRIAGE_ORDER, triagePreferences, type TriageRow } from "../shared/triage";
@@ -43,6 +43,14 @@ export function desiredTitle(row: TriageRow): string {
   const folder = basename(row.cwd) || "workspace";
   const task = original.startsWith("〖") ? original : `〖${folder}〗${original}`;
   return `${TRIAGE_DISPLAY[row.state].emoji} ${task}`.slice(0, 120);
+}
+
+export function desiredWorkspaceTitle(
+  row: TriageRow,
+  workspace: Pick<PaseoWorkspace, "name" | "title">,
+): string {
+  const original = (workspace.title || workspace.name).replace(TITLE_PREFIX, "").trim();
+  return `${TRIAGE_DISPLAY[row.state].emoji} ${original || basename(row.cwd) || "workspace"}`.slice(0, 120);
 }
 
 function cliPath(): string {
@@ -185,17 +193,43 @@ export class TriageService {
 
       const renameErrors: string[] = [];
       if (settings.renameTitles) {
-        let renamed = 0;
+        let renamedAgents = 0;
         for (const row of rows) {
-          if (renamed >= 10) break;
+          if (renamedAgents >= 10) break;
           const desired = desiredTitle(row);
           if (desired === row.title) continue;
           try {
             await renameAgent(row.id, desired);
             row.title = desired;
-            renamed++;
+            renamedAgents++;
           } catch (error) {
             renameErrors.push(`${row.id.slice(0, 8)}: ${errorText(error)}`);
+          }
+        }
+
+        // The built-in sidebar shows workspace names, not agent titles. Use the
+        // highest-priority top-level agent we scanned for each workspace.
+        const workspaceRows = new Map<string, TriageRow>();
+        const agentById = new Map(agents.map((agent) => [agent.id, agent]));
+        for (const row of rows) {
+          const agent = agentById.get(row.id);
+          if (agent?.workspaceId && !agent.labels["paseo.parent-agent-id"] && !workspaceRows.has(agent.workspaceId)) {
+            workspaceRows.set(agent.workspaceId, row);
+          }
+        }
+        let renamedWorkspaces = 0;
+        for (const [workspaceId, row] of workspaceRows) {
+          if (renamedWorkspaces >= 10) break;
+          try {
+            const handle = api.workspaces.ref(workspaceId);
+            const workspace = await handle.refresh();
+            if (!workspace || workspace.archivingAt) continue;
+            const desired = desiredWorkspaceTitle(row, workspace);
+            if (desired === workspace.name || desired === workspace.title) continue;
+            await handle.setTitle(desired);
+            renamedWorkspaces++;
+          } catch (error) {
+            renameErrors.push(`workspace ${workspaceId.slice(0, 8)}: ${errorText(error)}`);
           }
         }
       }

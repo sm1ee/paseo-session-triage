@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { classifyAgent, type AgentForTriage } from "./classifier";
-import { desiredTitle } from "./triage-service";
+import { desiredTitle, desiredWorkspaceTitle } from "./triage-service";
 
 const base: AgentForTriage = {
   id: "agent-1",
@@ -68,5 +68,11 @@ describe("desiredTitle", () => {
   it("keeps the task name and replaces an existing triage prefix", () => {
     const row = classifyAgent({ ...base, title: "🔴 릴리스 확인" }, exchange("완료했습니다."));
     expect(desiredTitle(row)).toBe("✅ 〖my-app〗릴리스 확인");
+  });
+
+  it("updates the workspace label shown in the built-in sidebar", () => {
+    const row = classifyAgent({ ...base, title: "🔴 〖my-app〗릴리스 확인" }, exchange("완료했습니다."));
+    expect(desiredWorkspaceTitle(row, { name: "🔴 릴리스 확인", title: "🔴 릴리스 확인" }))
+      .toBe("✅ 릴리스 확인");
   });
 });

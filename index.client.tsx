@@ -4,13 +4,13 @@ import { Text } from "react-native";
 import { TriageScreen, useTriageAttentionCount } from "./client/triage-screen";
 import { TriageSettingsScreen } from "./client/settings-screen";
 
-function TriageItem({ currentScreen, openScreen }: PluginSidebarItemProps) {
+function TriageItem({ currentScreen, openScreen, theme }: PluginSidebarItemProps) {
   const attention = useTriageAttentionCount();
   return (
     <SidebarRow
       icon="ListTodo"
       active={currentScreen?.screenId === "triage"}
-      trailing={attention > 0 ? <Text>{attention}</Text> : undefined}
+      trailing={attention > 0 ? <Text style={{ color: theme.colors.foreground }}>{attention}</Text> : undefined}
       onPress={() => openScreen({ screenId: "triage" })}
     />
   );

@@ -34,8 +34,8 @@ export function TriageSettingsScreen() {
       <SettingsSection title="이름">
         <SettingsCard>
           <SettingsSwitch
-            label="상태 이모지로 세션 이름 갱신"
-            hint="켜면 15분마다 변경된 세션 이름 앞에 상태를 표시합니다. 기존 제목은 보존합니다."
+            label="상태 이모지로 세션·워크스페이스 이름 갱신"
+            hint="고정 목록은 워크스페이스 이름을 표시하므로 함께 갱신합니다. 끄더라도 이전 이름은 자동 복원되지 않습니다."
             value={settings.values.renameTitles}
             onValueChange={(value) =>
               void settings.save({ ...settings.values, renameTitles: value }, settings.revision)

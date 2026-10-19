@@ -115,4 +115,65 @@ describe("TriageService", () => {
       service.stop();
     }
   });
+
+  it("uses the highest-priority state and avoids repeated workspace renames", async () => {
+    let workspaceName = "작업";
+    let renameCount = 0;
+    const agent = {
+      id: "agent-3",
+      title: "🔴 〖app〗작업",
+      cwd: "/work/app",
+      workspaceId: "wks-3",
+      provider: "codex",
+      updatedAt: "2026-10-19T08:00:00.000Z",
+      status: "error",
+      activeTurn: null,
+      pendingPermissions: [],
+      labels: {},
+      lastError: "오류",
+    };
+    const workingAgent = {
+      ...agent,
+      id: "agent-4",
+      title: "⏳ 〖app〗보조",
+      status: "running",
+      activeTurn: { turnId: "turn-4", startedAt: null },
+      lastError: undefined,
+    };
+    const api = {
+      agents: {
+        list: async () => ({
+          entries: [{ agent: workingAgent }, { agent }],
+          pageInfo: { nextCursor: null, hasMore: false },
+        }),
+      },
+      workspaces: {
+        ref: () => ({
+          refresh: async () => ({ name: workspaceName, title: workspaceName, archivingAt: null }),
+          setTitle: async (title: string) => {
+            workspaceName = title;
+            renameCount++;
+            return { title };
+          },
+        }),
+      },
+    } as unknown as PaseoApi;
+    const settings = {
+      read: async () => ({
+        status: "ready" as const,
+        revision: "1",
+        values: { renameTitles: true, includeSubagents: false, maxSessions: 20 },
+      }),
+    } as PluginSettings<typeof triagePreferences.schema>;
+    const service = new TriageService(settings);
+    try {
+      const snapshot = await service.snapshot(api, true);
+      expect(snapshot.error).toBeNull();
+      expect(workspaceName).toBe("🔴 작업");
+      await service.snapshot(api, true);
+      expect(renameCount).toBe(1);
+    } finally {
+      service.stop();
+    }
+  });
 });
