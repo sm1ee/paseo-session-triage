@@ -21,6 +21,18 @@ function exchange(reply: string): AgentTimelineItem[] {
 }
 
 describe("classifyAgent", () => {
+  it("uses red for a reported agent error even when permission is pending", () => {
+    const error = classifyAgent({
+      ...base,
+      status: "error",
+      lastError: "프로세스 종료",
+      pendingPermissions: [{ kind: "tool", title: "도구 실행 승인" }],
+    });
+    expect(error.state).toBe("error");
+    expect(error.summary).toContain("프로세스 종료");
+    expect(classifyAgent({ ...base, lastError: "프로세스 종료" }).state).toBe("error");
+  });
+
   it("gives pending permission priority over a running turn", () => {
     const row = classifyAgent({
       ...base,
@@ -74,5 +86,12 @@ describe("desiredTitle", () => {
     const row = classifyAgent({ ...base, title: "🔴 〖my-app〗릴리스 확인" }, exchange("완료했습니다."));
     expect(desiredWorkspaceTitle(row, { name: "🔴 릴리스 확인", title: "🔴 릴리스 확인" }))
       .toBe("✅ 릴리스 확인");
+  });
+
+  it("replaces the previous red review marker with orange", () => {
+    const row = classifyAgent({ ...base, title: "🔴 릴리스 확인" }, exchange("추가 검증이 필요합니다."));
+    expect(desiredTitle(row)).toBe("🟠 〖my-app〗릴리스 확인");
+    expect(desiredWorkspaceTitle(row, { name: "🔴 릴리스 확인", title: "🔴 릴리스 확인" }))
+      .toBe("🟠 릴리스 확인");
   });
 });

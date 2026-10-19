@@ -5,13 +5,12 @@ import { promisify } from "node:util";
 import type { PaseoAgent, PaseoApi, PaseoWorkspace } from "@getpaseo/client";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import type { PluginSettings } from "@getpaseo/plugin/server";
-import { TRIAGE_DISPLAY, TRIAGE_ORDER, triagePreferences, type TriageRow } from "../shared/triage";
+import { TRIAGE_DISPLAY, TRIAGE_ORDER, TRIAGE_TITLE_PREFIX, triagePreferences, type TriageRow } from "../shared/triage";
 import { classifyAgent } from "./classifier";
 
 const execFile = promisify(execFileCallback);
 const SCAN_INTERVAL_MS = 15 * 60_000;
 const TIMELINE_LIMIT = 24;
-const TITLE_PREFIX = /^[🔴📤👀⏳✅]\s*/u;
 type Preferences = ReturnType<typeof triagePreferences.schema.parse>;
 type SettingsHandle = PluginSettings<typeof triagePreferences.schema>;
 
@@ -39,7 +38,7 @@ function fingerprint(agent: PaseoAgent): string {
 }
 
 export function desiredTitle(row: TriageRow): string {
-  const original = row.title.replace(TITLE_PREFIX, "").trim();
+  const original = row.title.replace(TRIAGE_TITLE_PREFIX, "").trim();
   const folder = basename(row.cwd) || "workspace";
   const task = original.startsWith("〖") ? original : `〖${folder}〗${original}`;
   return `${TRIAGE_DISPLAY[row.state].emoji} ${task}`.slice(0, 120);
@@ -49,7 +48,7 @@ export function desiredWorkspaceTitle(
   row: TriageRow,
   workspace: Pick<PaseoWorkspace, "name" | "title">,
 ): string {
-  const original = (workspace.title || workspace.name).replace(TITLE_PREFIX, "").trim();
+  const original = (workspace.title || workspace.name).replace(TRIAGE_TITLE_PREFIX, "").trim();
   return `${TRIAGE_DISPLAY[row.state].emoji} ${original || basename(row.cwd) || "workspace"}`.slice(0, 120);
 }
 

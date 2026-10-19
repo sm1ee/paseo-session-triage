@@ -3,9 +3,9 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { TRIAGE_DISPLAY, TRIAGE_ORDER, triageSnapshotRpc, type TriageRow } from "../shared/triage";
+import { TRIAGE_DISPLAY, TRIAGE_ORDER, TRIAGE_TITLE_PREFIX, triageSnapshotRpc, type TriageRow } from "../shared/triage";
 
-const QUERY_KEY = ["session-triage", "snapshot"] as const;
+const QUERY_KEY = ["session-triage", "snapshot", 2] as const;
 
 function TriageCard({
   row,
@@ -32,7 +32,7 @@ function TriageCard({
       }}
     >
       <Text style={{ color: theme.colors.foreground, fontSize: compact ? 15 : 16, fontWeight: "600" }}>
-        {TRIAGE_DISPLAY[row.state].emoji} {row.title.replace(/^[🔴📤👀⏳✅]\s*/u, "")}
+        {TRIAGE_DISPLAY[row.state].emoji} {row.title.replace(TRIAGE_TITLE_PREFIX, "")}
       </Text>
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }} numberOfLines={1}>
         {row.cwd} · {row.provider}
@@ -175,5 +175,5 @@ export function useTriageAttentionCount() {
     staleTime: 30_000,
     retry: false,
   });
-  return query.data?.rows.filter((row) => row.state === "needs-you" || row.state === "ready-to-send").length ?? 0;
+  return query.data?.rows.filter((row) => row.state === "error" || row.state === "needs-you" || row.state === "ready-to-send").length ?? 0;
 }

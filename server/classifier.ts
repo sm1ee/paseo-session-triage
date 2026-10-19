@@ -70,6 +70,9 @@ export function classifyAgent(
     return { ...base, state, summary, action, source };
   }
 
+  if (agent.status === "error") {
+    return row("error", compact(agent.lastError || "에이전트 오류"), "오류를 확인해주세요.", "metadata");
+  }
   const permission = agent.pendingPermissions[0];
   if (permission) {
     return row(
@@ -78,9 +81,6 @@ export function classifyAgent(
       "Paseo에서 요청을 확인하고 답해주세요.",
       "metadata",
     );
-  }
-  if (agent.status === "error") {
-    return row("needs-you", compact(agent.lastError || "에이전트 오류"), "오류를 확인해주세요.", "metadata");
   }
   if (agent.activeTurn || agent.status === "initializing") {
     return row("working", "에이전트가 현재 턴을 실행 중입니다.", "", "metadata");
@@ -92,7 +92,7 @@ export function classifyAgent(
   const message = recentAssistantText(timeline);
   if (!message) {
     if (agent.lastError) {
-      return row("needs-you", compact(agent.lastError), "오류를 확인해주세요.", "metadata");
+      return row("error", compact(agent.lastError), "오류를 확인해주세요.", "metadata");
     }
     return row("needs-you", "최근 완료 응답이 없습니다.", "세션을 확인해주세요.", "fallback");
   }

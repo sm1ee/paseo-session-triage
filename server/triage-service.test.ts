@@ -140,10 +140,20 @@ describe("TriageService", () => {
       activeTurn: { turnId: "turn-4", startedAt: null },
       lastError: undefined,
     };
+    const reviewAgent = {
+      ...agent,
+      id: "agent-5",
+      title: "🟠 〖app〗검토",
+      status: "running",
+      activeTurn: null,
+      pendingPermissions: [{ id: "permission-5", kind: "tool", title: "검토 필요" }],
+      lastError: undefined,
+    };
+    let includeError = true;
     const api = {
       agents: {
         list: async () => ({
-          entries: [{ agent: workingAgent }, { agent }],
+          entries: [workingAgent, reviewAgent, ...(includeError ? [agent] : [])].map((item) => ({ agent: item })),
           pageInfo: { nextCursor: null, hasMore: false },
         }),
       },
@@ -172,6 +182,10 @@ describe("TriageService", () => {
       expect(workspaceName).toBe("🔴 작업");
       await service.snapshot(api, true);
       expect(renameCount).toBe(1);
+      includeError = false;
+      await service.snapshot(api, true);
+      expect(workspaceName).toBe("🟠 작업");
+      expect(renameCount).toBe(2);
     } finally {
       service.stop();
     }
