@@ -1,6 +1,6 @@
 # Session triage
 
-See the Paseo sessions that need your attention in one place. Open a session from the list, or check the attention count in the sidebar.
+See the Paseo sessions that need your attention in one place. Open a session from the list, or check the attention count in the desktop and web sidebar. The sidebar shortcut is hidden in the iOS and Android apps; open Session triage from the Command Center there.
 
 The icons mean:
 
