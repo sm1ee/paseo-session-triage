@@ -19,6 +19,7 @@ export const triageStateSchema = z.enum([
   "needs-you",
   "checking",
   "working",
+  "idle",
   "done",
 ]);
 
@@ -52,6 +53,10 @@ export const triageSnapshotRpc = defineRpc({
   }),
 });
 
+export const triageInspectRpc = defineRpc({
+  name: "triage.inspect", input: z.object({ id: z.string().min(1) }), output: triageSnapshotRpc.output,
+});
+
 export const TRIAGE_DISPLAY: Record<TriageState, { emoji: string; label: string; description: string }> = {
   error: {
     emoji: "🔴",
@@ -83,6 +88,7 @@ export const TRIAGE_DISPLAY: Record<TriageState, { emoji: string; label: string;
     label: "Working",
     description: "The agent is running a turn or starting up.",
   },
+  idle: { emoji: "○", label: "Idle", description: "No active turn. Check a reply to classify it." },
   done: {
     emoji: "✅",
     label: "Done",
@@ -97,5 +103,6 @@ export const TRIAGE_ORDER: readonly TriageState[] = [
   "needs-you",
   "checking",
   "working",
+  "idle",
   "done",
 ];

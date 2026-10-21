@@ -1,11 +1,13 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { TriageService } from "./server/triage-service";
-import { triagePreferences, triageSnapshotRpc } from "./shared/triage";
+import { triagePreferences, triageSnapshotRpc, triageInspectRpc } from "./shared/triage";
 
 export default function contribute(server: PluginServerContext) {
   const settings = server.registerSettings(triagePreferences);
   const service = new TriageService(settings);
   server.handle(triageSnapshotRpc, ({ refresh }, { paseo }) => service.snapshot(paseo, refresh));
+
+  server.handle(triageInspectRpc, ({ id }, { paseo }) => service.inspect(paseo, id));
 
   const removeHooks = [
     server.on("agent.created", (event) => service.invalidate(event.agent.id)),

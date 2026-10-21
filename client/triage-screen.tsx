@@ -3,22 +3,23 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { TRIAGE_DISPLAY, TRIAGE_ORDER, TRIAGE_TITLE_PREFIX, triageSnapshotRpc, type TriageRow } from "../shared/triage";
+import { TRIAGE_DISPLAY, TRIAGE_ORDER, TRIAGE_TITLE_PREFIX, triageSnapshotRpc, triageInspectRpc, type TriageRow } from "../shared/triage";
 
-const QUERY_KEY = ["session-triage", "snapshot", 3] as const;
+const QUERY_KEY = ["session-triage", "snapshot", 4] as const;
 
 function TriageCard({
   row,
   theme,
   compact,
-  onOpen,
+  onOpen, onInspect, inspecting,
 }: {
   row: TriageRow;
   theme: PluginScreenProps["theme"];
   compact: boolean;
-  onOpen?: () => void;
+  onOpen?: () => void; onInspect: () => void; inspecting: boolean;
 }) {
   return (
+    <View style={{ gap: 5 }}>
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${TRIAGE_DISPLAY[row.state].label}: ${row.title}`}
@@ -46,18 +47,25 @@ function TriageCard({
         </Text>
       ) : null}
     </Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel="Check recent reply" disabled={inspecting} onPress={onInspect}
+      style={{ padding: 10, opacity: inspecting ? 0.5 : 1 }}>
+      <Text style={{ color: theme.colors.accent }}>{inspecting ? "Checking…" : "Check reply"}</Text>
+    </Pressable>
+    </View>
   );
 }
 
 export function TriageScreen({ theme, layout, navigation }: PluginScreenProps) {
   const fetchSnapshot = useRpc(triageSnapshotRpc);
+  const inspect = useRpc(triageInspectRpc);
+  const [inspecting, setInspecting] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const query = useQuery({
     queryKey: QUERY_KEY,
     queryFn: () => fetchSnapshot({ refresh: false }),
-    refetchInterval: 60_000,
+    refetchInterval: 120_000,
     staleTime: 30_000,
     retry: false,
   });
@@ -75,6 +83,13 @@ export function TriageScreen({ theme, layout, navigation }: PluginScreenProps) {
     }
   }
 
+  async function inspectReply(id: string) {
+    if (inspecting) return;
+    setInspecting(id); setRefreshError(null);
+    try { queryClient.setQueryData(QUERY_KEY, await inspect({ id })); }
+    catch { setRefreshError("Could not check this reply. Try again when idle."); }
+    finally { setInspecting(null); }
+  }
   const rows = query.data?.rows ?? [];
   const padding = layout.compact ? 14 : 22;
 
@@ -153,6 +168,7 @@ export function TriageScreen({ theme, layout, navigation }: PluginScreenProps) {
                 row={row}
                 theme={theme}
                 compact={layout.compact}
+                onInspect={() => void inspectReply(row.id)} inspecting={inspecting !== null}
                 onOpen={navigation ? () => navigation.openAgent({ agentId: row.id }) : undefined}
               />
             ))}
@@ -171,7 +187,7 @@ export function useTriageAttentionCount() {
   const query = useQuery({
     queryKey: QUERY_KEY,
     queryFn: () => fetchSnapshot({ refresh: false }),
-    refetchInterval: 60_000,
+    refetchInterval: 120_000,
     staleTime: 30_000,
     retry: false,
   });

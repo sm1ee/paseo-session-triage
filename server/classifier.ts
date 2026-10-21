@@ -49,7 +49,7 @@ function recentAssistantText(timeline: readonly AgentTimelineItem[]): string {
 
 export function classifyAgent(
   agent: AgentForTriage,
-  timeline: readonly AgentTimelineItem[] = [],
+  timeline?: readonly AgentTimelineItem[],
   timelineError?: string,
 ): TriageRow {
   const title = agent.title?.trim() || agent.cwd.split(/[\\/]/u).filter(Boolean).at(-1) || agent.id;
@@ -87,6 +87,11 @@ export function classifyAgent(
   }
   if (timelineError) {
     return row("needs-you", "Could not read the latest messages.", "Open the session to check its status.", "fallback");
+  }
+
+  if (!timeline) {
+    if (agent.lastError) return row("error", compact(agent.lastError), "Open the session to see the error.", "metadata");
+    return row("idle", "No active turn.", "", "metadata");
   }
 
   const message = recentAssistantText(timeline);

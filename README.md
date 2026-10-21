@@ -27,11 +27,11 @@ Pending permission requests come from Paseo. Requests found in chat are inferred
 Requires Paseo 0.11.4 or later. Install the tagged GitHub version:
 
 ```sh
-paseo plugin add git:sm1ee/paseo-session-triage --ref v0.1.7
+paseo plugin add git:sm1ee/paseo-session-triage --ref v0.1.8
 paseo plugin ls session-triage
 ```
 
-Open **Session triage** in the sidebar. To change the session limit, include subagents, or enable title updates, open **Settings → Plugins → Session triage settings**.
+Open **Session triage** in the sidebar. To change the session limit, include subagents, or change the session limit, open **Settings → Plugins → Session triage settings**.
 
 The sidebar shortcut is hidden in the iOS and Android apps. Use **Open session triage** in the Command Center to open it there.
 
@@ -49,10 +49,10 @@ If the CLI is not on your `PATH` on macOS, use `/Applications/Paseo.app/Contents
 ## How it works
 
 - The default view shows up to 20 recent top-level sessions. You can include subagents or raise the limit in Settings.
-- The screen and sidebar poll once a minute. The service rescans when a session changes or its last scan is over 15 minutes old.
-- Paseo's active-turn, permission, and error states take priority. For other sessions, the plugin reads up to 24 recent timeline items and looks at replies after the latest user message. It reuses the result while a session is unchanged.
+- The screen and sidebar check metadata every two minutes while open. Scans share an in-flight request, debounce events, and back off after failures.
+- Automatic checks read metadata only. Idle sessions stay unclassified until you choose **Check reply**. That action reads up to 20 recent timeline items from one idle session. Results stay in memory while its metadata is unchanged.
 - Chat-based labels are rules of thumb. Unclear replies and failed timeline reads show 🟠.
-- Adding emoji to session and workspace names is off by default. When enabled, the plugin uses the local Paseo CLI for session names and the Paseo API for workspace names. Turning it off does not restore names it already changed.
+- Session and workspace titles are not changed. Old title-update settings are ignored; existing names are kept.
 - The plugin cannot send messages, approve requests, stop agents, delete sessions, or archive them. It does not send conversation text to another model or external service. It keeps short excerpts in memory and settings in Paseo's host settings store.
 
 ## Paseo plugin catalog

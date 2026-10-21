@@ -1,16 +1,10 @@
-import { execFile as execFileCallback } from "node:child_process";
-import { existsSync } from "node:fs";
 import { basename } from "node:path";
-import { promisify } from "node:util";
 import type { PaseoAgent, PaseoApi, PaseoWorkspace } from "@getpaseo/client";
-import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import type { PluginSettings } from "@getpaseo/plugin/server";
 import { TRIAGE_DISPLAY, TRIAGE_ORDER, TRIAGE_TITLE_PREFIX, triagePreferences, type TriageRow } from "../shared/triage";
 import { classifyAgent } from "./classifier";
 
-const execFile = promisify(execFileCallback);
 const SCAN_INTERVAL_MS = 15 * 60_000;
-const TIMELINE_LIMIT = 24;
 type Preferences = ReturnType<typeof triagePreferences.schema.parse>;
 type SettingsHandle = PluginSettings<typeof triagePreferences.schema>;
 
@@ -22,10 +16,6 @@ interface Snapshot {
   renameErrors: string[];
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function fingerprint(agent: PaseoAgent): string {
   return [
     agent.updatedAt,
@@ -34,6 +24,7 @@ function fingerprint(agent: PaseoAgent): string {
     agent.activeTurn?.turnId ?? "",
     agent.pendingPermissions.map((request) => request.id).join(","),
     agent.lastError ?? "",
+    agent.lastUserMessageAt ?? "",
   ].join("|");
 }
 
@@ -52,202 +43,92 @@ export function desiredWorkspaceTitle(
   return `${TRIAGE_DISPLAY[row.state].emoji} ${original || basename(row.cwd) || "workspace"}`.slice(0, 120);
 }
 
-function cliPath(): string {
-  if (process.env.PASEO_CLI_PATH) return process.env.PASEO_CLI_PATH;
-  const macApp = "/Applications/Paseo.app/Contents/Resources/bin/paseo";
-  return existsSync(macApp) ? macApp : "paseo";
-}
-
-async function renameAgent(agentId: string, title: string): Promise<void> {
-  const args = ["agent", "update", agentId, "--name", title, "--json"];
-  if (process.env.PASEO_HOME) args.push("--home", process.env.PASEO_HOME);
-  await execFile(cliPath(), args, { timeout: 10_000, maxBuffer: 64 * 1024 });
-}
-
 export class TriageService {
-  private readonly settings: SettingsHandle;
-  private snapshotValue: Snapshot = {
-    rows: [],
-    checkedAt: null,
-    truncated: false,
-    error: null,
-    renameErrors: [],
-  };
-  private fingerprints = new Map<string, string>();
+  private snapshotValue: Snapshot = { rows: [], checkedAt: null, truncated: false, error: null, renameErrors: [] };
+  private agents = new Map<string, PaseoAgent>();
   private generation = 0;
   private pending: Promise<void> | null = null;
+  private inspections = new Map<string, Promise<Snapshot>>();
+  private inspected = new Map<string, { fingerprint: string; row: TriageRow }>();
   private stopped = false;
-
-  constructor(settings: SettingsHandle) {
-    this.settings = settings;
-  }
-
-  invalidate(agentId?: string): void {
-    this.generation++;
-    this.snapshotValue = { ...this.snapshotValue, checkedAt: null };
-    if (agentId) this.fingerprints.delete(agentId);
-    else this.fingerprints.clear();
-  }
-
+  private dirty = true;
+  private lastAttempt = 0;
+  private retryAt = 0;
+  constructor(private readonly settings: SettingsHandle, private readonly now = Date.now) {}
+  invalidate(_agentId?: string): void { this.generation++; this.dirty = true; }
+  stop(): void { this.stopped = true; }
   async snapshot(api: PaseoApi, refresh: boolean): Promise<Snapshot> {
+    if (this.stopped) return this.snapshotValue;
     const previous = this.snapshotValue.checkedAt ? Date.parse(this.snapshotValue.checkedAt) : 0;
-    if (refresh || !previous || Date.now() - previous >= SCAN_INTERVAL_MS) {
-      await this.runScan(api, refresh);
-    } else if (this.pending) {
-      await this.pending;
-    }
+    if (!this.pending && (refresh || this.now() >= this.retryAt &&
+        (!previous || this.now() - previous >= SCAN_INTERVAL_MS || this.dirty && this.now() - this.lastAttempt >= 10_000))) {
+      const task = this.performScan(api); this.pending = task;
+      try { await task; } finally { if (this.pending === task) this.pending = null; }
+    } else if (this.pending && !this.snapshotValue.checkedAt) await this.pending;
     return this.snapshotValue;
   }
-
-  stop(): void {
-    this.stopped = true;
-  }
-
   private async preferences(): Promise<Preferences> {
     const state = await this.settings.read();
-    if (state.status === "ready") return state.values;
-    console.error("session-triage settings invalid:", state.error);
-    return triagePreferences.schema.parse({});
+    return state.status === "ready" ? state.values : triagePreferences.schema.parse({});
   }
-
-  private async runScan(api: PaseoApi, forceRecentMessages: boolean): Promise<void> {
-    if (this.stopped) return;
-    if (this.pending) return this.pending;
-    const task = this.performScan(api, forceRecentMessages);
-    this.pending = task;
+  private async performScan(api: PaseoApi): Promise<void> {
+    const generation = this.generation; this.lastAttempt = this.now();
+    const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 6000);
     try {
-      await task;
-    } finally {
-      if (this.pending === task) this.pending = null;
-    }
-  }
-
-  private async performScan(api: PaseoApi, forceRecentMessages: boolean): Promise<void> {
-    const generation = this.generation;
-    try {
-      const settings = await this.preferences();
-      const agents: PaseoAgent[] = [];
-      let cursor: string | undefined;
-      let hasMore = false;
-      let pages = 0;
+      const settings = await this.preferences(), agents: PaseoAgent[] = [];
+      let cursor: string | undefined, hasMore = false, pages = 0;
       do {
-        const result = await api.agents.list({
-          scope: "active",
-          filter: { includeArchived: false },
+        if (this.stopped || abort.signal.aborted) throw new Error("scan_stopped");
+        const result = await api.agents.list({ scope: "active", filter: { includeArchived: false },
           sort: [{ key: "updated_at", direction: "desc" }],
-          page: { limit: Math.min(100, settings.maxSessions * 2), ...(cursor ? { cursor } : {}) },
-        });
-        for (const entry of result.entries) {
-          const agent = entry.agent;
+          page: { limit: Math.min(100, settings.maxSessions * 2), ...(cursor ? { cursor } : {}) }, signal: abort.signal });
+        for (const { agent } of result.entries) {
           if (!settings.includeSubagents && agent.labels["paseo.parent-agent-id"]) continue;
-          agents.push(agent);
-          if (agents.length >= settings.maxSessions) break;
+          agents.push(agent); if (agents.length >= settings.maxSessions) break;
         }
-        cursor = result.pageInfo.nextCursor ?? undefined;
-        hasMore = result.pageInfo.hasMore;
-        pages++;
+        cursor = result.pageInfo.nextCursor ?? undefined; hasMore = result.pageInfo.hasMore; pages++;
       } while (agents.length < settings.maxSessions && hasMore && cursor && pages < 3);
-
-      const oldRows = new Map(this.snapshotValue.rows.map((row) => [row.id, row]));
-      const nextFingerprints = new Map<string, string>();
-      const rows: TriageRow[] = [];
-      for (let start = 0; start < agents.length; start += 2) {
-        const batch = agents.slice(start, start + 2);
-        const results = await Promise.all(
-          batch.map(async (agent) => {
-            const nextFingerprint = fingerprint(agent);
-            nextFingerprints.set(agent.id, nextFingerprint);
-            const previous = oldRows.get(agent.id);
-            if (!forceRecentMessages && previous && this.fingerprints.get(agent.id) === nextFingerprint) {
-              return previous;
-            }
-
-            const needsTimeline =
-              agent.pendingPermissions.length === 0 &&
-              !agent.activeTurn &&
-              agent.status !== "initializing" &&
-              agent.status !== "error";
-            if (!needsTimeline) return classifyAgent(agent);
-            try {
-              const timeline = await api.agents.ref(agent.id).timeline.refetch({
-                direction: "tail",
-                projection: "canonical",
-                limit: TIMELINE_LIMIT,
-              });
-              if (timeline.error) return classifyAgent(agent, [], timeline.error);
-              const items: AgentTimelineItem[] = timeline.entries.map((entry) => entry.item);
-              return classifyAgent(agent, items);
-            } catch (error) {
-              return classifyAgent(agent, [], errorText(error));
-            }
-          }),
-        );
-        rows.push(...results);
-      }
-
-      rows.sort((a, b) => {
-        const priority = TRIAGE_ORDER.indexOf(a.state) - TRIAGE_ORDER.indexOf(b.state);
-        return priority || Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
-      });
-
-      const renameErrors: string[] = [];
-      if (settings.renameTitles) {
-        let renamedAgents = 0;
-        for (const row of rows) {
-          if (renamedAgents >= 10) break;
-          const desired = desiredTitle(row);
-          if (desired === row.title) continue;
-          try {
-            await renameAgent(row.id, desired);
-            row.title = desired;
-            renamedAgents++;
-          } catch (error) {
-            renameErrors.push(`${row.id.slice(0, 8)}: ${errorText(error)}`);
-          }
-        }
-
-        // The built-in sidebar shows workspace names, not agent titles. Use the
-        // highest-priority top-level agent we scanned for each workspace.
-        const workspaceRows = new Map<string, TriageRow>();
-        const agentById = new Map(agents.map((agent) => [agent.id, agent]));
-        for (const row of rows) {
-          const agent = agentById.get(row.id);
-          if (agent?.workspaceId && !agent.labels["paseo.parent-agent-id"] && !workspaceRows.has(agent.workspaceId)) {
-            workspaceRows.set(agent.workspaceId, row);
-          }
-        }
-        let renamedWorkspaces = 0;
-        for (const [workspaceId, row] of workspaceRows) {
-          if (renamedWorkspaces >= 10) break;
-          try {
-            const handle = api.workspaces.ref(workspaceId);
-            const workspace = await handle.refresh();
-            if (!workspace || workspace.archivingAt) continue;
-            const desired = desiredWorkspaceTitle(row, workspace);
-            if (desired === workspace.name || desired === workspace.title) continue;
-            await handle.setTitle(desired);
-            renamedWorkspaces++;
-          } catch (error) {
-            renameErrors.push(`workspace ${workspaceId.slice(0, 8)}: ${errorText(error)}`);
-          }
-        }
-      }
-
-      this.fingerprints = generation === this.generation ? nextFingerprints : new Map();
-      this.snapshotValue = {
-        rows,
-        checkedAt: generation === this.generation ? new Date().toISOString() : null,
-        truncated: hasMore || agents.length >= settings.maxSessions,
-        error: null,
-        renameErrors,
-      };
-    } catch (error) {
-      this.snapshotValue = {
-        ...this.snapshotValue,
-        checkedAt: new Date().toISOString(),
-        error: errorText(error),
-      };
-      console.error("session-triage scan failed:", errorText(error));
-    }
+      if (this.stopped) return;
+      // 사이드바·새로고침은 메타데이터만 읽는다. 숨은 기록 복원과 제목 변경을 하지 않는다.
+      this.agents = new Map(agents.map(agent => [agent.id, agent]));
+      for (const id of this.inspected.keys()) if (!this.agents.has(id)) this.inspected.delete(id);
+      const rows = agents.map(agent => {
+        const cached = this.inspected.get(agent.id);
+        if (cached?.fingerprint === fingerprint(agent)) return { ...cached.row, title: agent.title || cached.row.title };
+        this.inspected.delete(agent.id); return classifyAgent(agent);
+      }); this.sort(rows);
+      this.snapshotValue = { rows, checkedAt: new Date(this.now()).toISOString(),
+        truncated: hasMore || agents.length >= settings.maxSessions, error: null, renameErrors: [] };
+      this.dirty = generation !== this.generation; this.retryAt = 0;
+    } catch {
+      this.retryAt = this.now() + 60_000;
+      this.snapshotValue = { ...this.snapshotValue, error: "Status unavailable. Showing the last check." };
+    } finally { clearTimeout(timer); }
+  }
+  private sort(rows: TriageRow[]): void {
+    rows.sort((a, b) => TRIAGE_ORDER.indexOf(a.state) - TRIAGE_ORDER.indexOf(b.state) || Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  }
+  inspect(api: PaseoApi, id: string): Promise<Snapshot> {
+    const pending = this.inspections.get(id); if (pending) return pending;
+    if (this.inspections.size >= 1) return Promise.reject(new Error("Another session is being checked."));
+    const task = this.inspectOne(api, id); this.inspections.set(id, task);
+    const clear = () => { if (this.inspections.get(id) === task) this.inspections.delete(id); };
+    void task.then(clear, clear); return task;
+  }
+  private async inspectOne(api: PaseoApi, id: string): Promise<Snapshot> {
+    if (this.stopped || !this.agents.has(id)) throw new Error("Refresh the session list first.");
+    const generation = this.generation;
+    const current = (await api.agents.ref(id).refresh())?.agent;
+    if (!current || current.archivedAt || this.stopped) throw new Error("This session is unavailable.");
+    if (current.activeTurn || current.status !== "idle" || current.pendingPermissions.length) throw new Error("Check again when the session is idle.");
+    const timeline = await api.agents.ref(id).timeline.refetch({ direction: "tail", projection: "canonical", limit: 20 });
+    if (timeline.error || this.stopped || generation !== this.generation) throw new Error("The session changed. Refresh and try again.");
+    const latest = (await api.agents.ref(id).refresh())?.agent;
+    if (!latest || fingerprint(latest) !== fingerprint(current)) throw new Error("The session changed. Refresh and try again.");
+    const row = classifyAgent(latest, timeline.entries.map(entry => entry.item));
+    this.inspected.set(id, { fingerprint: fingerprint(latest), row });
+    this.snapshotValue = { ...this.snapshotValue, rows: this.snapshotValue.rows.map(old => old.id === id ? row : old) };
+    this.sort(this.snapshotValue.rows);
+    return this.snapshotValue;
   }
 }
