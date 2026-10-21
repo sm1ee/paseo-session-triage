@@ -51,8 +51,8 @@ describe("저부하 세션 분류", () => {
     await expect(f.service.inspect(f.api, "missing")).rejects.toThrow(/Refresh/);
     expect(f.timeline).not.toHaveBeenCalled(); f.service.stop();
   });
-  it("런타임이 상주해 running으로 표시돼도 실제 턴과 권한 대기가 없으면 확인할 수 있다", async () => {
-    const f = fixture(); f.agents[0]!.status = "running";
+  it.each(["running", "closed"])("런타임 상태가 %s여도 실제 턴과 권한 대기가 없으면 확인할 수 있다", async (status) => {
+    const f = fixture(); f.agents[0]!.status = status;
     expect((await f.service.snapshot(f.api, false)).rows[0]?.state).toBe("idle");
     expect((await f.service.inspect(f.api, "a-0")).rows[0]?.state).toBe("done");
     expect(f.timeline).toHaveBeenCalledOnce(); f.service.stop();
