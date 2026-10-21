@@ -1,12 +1,13 @@
+import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { useSettings } from "@getpaseo/plugin/client";
 import { SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch } from "@getpaseo/plugin/client/ui";
 import { Text, View } from "react-native";
 import { triagePreferences } from "../shared/triage";
 
-export function TriageSettingsScreen() {
+export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
   const settings = useSettings(triagePreferences);
   if (settings.status !== "ready") {
-    return <Text>{settings.status === "loading" ? "Loading settings…" : "Could not load settings."}</Text>;
+    return <Text style={{ color: theme.colors.foreground }}>{settings.status === "loading" ? "Loading settings…" : "Could not load settings."}</Text>;
   }
 
   return (
@@ -31,19 +32,7 @@ export function TriageSettingsScreen() {
           />
         </SettingsCard>
       </SettingsSection>
-      <SettingsSection title="Names">
-        <SettingsCard>
-          <SettingsSwitch
-            label="Add status emoji to session and workspace names"
-            hint="Pinned items show workspace names. Turning this off does not restore names already changed."
-            value={settings.values.renameTitles}
-            onValueChange={(value) =>
-              void settings.save({ ...settings.values, renameTitles: value }, settings.revision)
-            }
-          />
-        </SettingsCard>
-      </SettingsSection>
-      {settings.saveError ? <Text>{settings.saveError}</Text> : null}
+      {settings.saveError ? <Text style={{ color: theme.colors.foreground }}>{settings.saveError}</Text> : null}
     </View>
   );
 }
