@@ -45,10 +45,17 @@ describe("저부하 세션 분류", () => {
     await expect(f.service.inspect(f.api, "a-0")).rejects.toThrow(/changed/); f.service.stop();
   });
   it("실행 중이거나 목록에 없는 대화는 본문을 읽지 않는다", async () => {
-    const f = fixture(); await f.service.snapshot(f.api, false); f.agents[0]!.status = "running";
+    const f = fixture(); await f.service.snapshot(f.api, false);
+    Object.assign(f.agents[0]!, { status: "running", activeTurn: { turnId: "fixture-turn", startedAt: null } });
     await expect(f.service.inspect(f.api, "a-0")).rejects.toThrow(/idle/);
     await expect(f.service.inspect(f.api, "missing")).rejects.toThrow(/Refresh/);
     expect(f.timeline).not.toHaveBeenCalled(); f.service.stop();
+  });
+  it.each(["running", "closed"])("런타임 상태가 %s여도 실제 턴과 권한 대기가 없으면 확인할 수 있다", async (status) => {
+    const f = fixture(); f.agents[0]!.status = status;
+    expect((await f.service.snapshot(f.api, false)).rows[0]?.state).toBe("idle");
+    expect((await f.service.inspect(f.api, "a-0")).rows[0]?.state).toBe("done");
+    expect(f.timeline).toHaveBeenCalledOnce(); f.service.stop();
   });
   it("이벤트를 합치고 실패하면 60초 후 재시도한다", async () => {
     const f = fixture(); await f.service.snapshot(f.api, false);

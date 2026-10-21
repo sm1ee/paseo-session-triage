@@ -120,7 +120,8 @@ export class TriageService {
     const generation = this.generation;
     const current = (await api.agents.ref(id).refresh())?.agent;
     if (!current || current.archivedAt || this.stopped) throw new Error("This session is unavailable.");
-    if (current.activeTurn || current.status !== "idle" || current.pendingPermissions.length) throw new Error("Check again when the session is idle.");
+    // running은 제공자 런타임이 상주한 상태이기도 하다. 실제 턴·권한 상태를 확인한다.
+    if (current.activeTurn || ["initializing", "error"].includes(current.status) || current.pendingPermissions.length) throw new Error("Check again when the session is idle.");
     const timeline = await api.agents.ref(id).timeline.refetch({ direction: "tail", projection: "canonical", limit: 20 });
     if (timeline.error || this.stopped || generation !== this.generation) throw new Error("The session changed. Refresh and try again.");
     const latest = (await api.agents.ref(id).refresh())?.agent;
