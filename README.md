@@ -27,7 +27,7 @@ Pending permission requests come from Paseo. Requests found in chat are inferred
 Requires Paseo 0.11.4 or later. Install the tagged GitHub version:
 
 ```sh
-paseo plugin add git:sm1ee/paseo-session-triage --ref v0.1.8
+paseo plugin add git:sm1ee/paseo-session-triage --ref v0.1.9
 paseo plugin ls session-triage
 ```
 
