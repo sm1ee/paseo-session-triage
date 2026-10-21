@@ -31,7 +31,7 @@ paseo plugin add git:sm1ee/paseo-session-triage --ref v0.1.9
 paseo plugin ls session-triage
 ```
 
-Open **Session triage** in the sidebar. To change the session limit, include subagents, or change the session limit, open **Settings → Plugins → Session triage settings**.
+Open **Session triage** in the sidebar. To change the session limit or include subagents, open **Settings → Plugins → Session triage settings**.
 
 The sidebar shortcut is hidden in the iOS and Android apps. Use **Open session triage** in the Command Center to open it there.
 
