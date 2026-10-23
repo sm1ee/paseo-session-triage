@@ -25,7 +25,7 @@ export const triageStateSchema = z.enum([
 
 export type TriageState = z.infer<typeof triageStateSchema>;
 
-export const TRIAGE_TITLE_PREFIX = /^[🔴❓🟠📤👀⏳✅]\s*/u;
+export const TRIAGE_TITLE_PREFIX = /^[🔴❓🟠📤👀⏳✅○]\s*/u;
 
 export const triageRowSchema = z.object({
   id: z.string(),

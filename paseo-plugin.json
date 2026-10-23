@@ -2,8 +2,9 @@
   "id": "session-triage",
   "name": "Session triage",
   "description": "See which Paseo sessions need your input, are still working, or are done.",
-  "media": ["assets/session-triage-redacted.png"],
+  "build": [["npm", "ci", "--ignore-scripts", "--omit=dev"]],
+  "media": ["assets/session-triage-redacted.png", "assets/session-triage-settings.png"],
   "requirements": {
-    "paseo": ">=0.11.4"
+    "paseo": ">=0.11.4 <0.13.0"
   }
 }

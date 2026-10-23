@@ -1,0 +1,22 @@
+name: Check
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sdk: ["0.11.4", "0.12.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - if: matrix.sdk != '0.11.4'
+        run: npm install --ignore-scripts --no-save --package-lock=false --legacy-peer-deps @getpaseo/plugin@${{ matrix.sdk }} @getpaseo/protocol@${{ matrix.sdk }} @getpaseo/client@${{ matrix.sdk }}
+      - run: npm run typecheck
+      - run: npm run test:mobile
+      - run: npm test

@@ -1,8 +1,10 @@
-import { basename } from "node:path";
-import type { PaseoAgent, PaseoApi, PaseoWorkspace } from "@getpaseo/client";
+import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
+import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import type { PluginSettings } from "@getpaseo/plugin/server";
-import { TRIAGE_DISPLAY, TRIAGE_ORDER, TRIAGE_TITLE_PREFIX, triagePreferences, type TriageRow } from "../shared/triage";
+import { TRIAGE_ORDER, triagePreferences, type TriageRow } from "../shared/triage";
 import { classifyAgent } from "./classifier";
+import { TitleSync } from "./title-sync";
+export { desiredTitle, desiredWorkspaceTitle } from "./titles";
 
 const SCAN_INTERVAL_MS = 15 * 60_000;
 type Preferences = ReturnType<typeof triagePreferences.schema.parse>;
@@ -28,21 +30,6 @@ function fingerprint(agent: PaseoAgent): string {
   ].join("|");
 }
 
-export function desiredTitle(row: TriageRow): string {
-  const original = row.title.replace(TRIAGE_TITLE_PREFIX, "").trim();
-  const folder = basename(row.cwd) || "workspace";
-  const task = original.startsWith("〖") ? original : `〖${folder}〗${original}`;
-  return `${TRIAGE_DISPLAY[row.state].emoji} ${task}`.slice(0, 120);
-}
-
-export function desiredWorkspaceTitle(
-  row: TriageRow,
-  workspace: Pick<PaseoWorkspace, "name" | "title">,
-): string {
-  const original = (workspace.title || workspace.name).replace(TRIAGE_TITLE_PREFIX, "").trim();
-  return `${TRIAGE_DISPLAY[row.state].emoji} ${original || basename(row.cwd) || "workspace"}`.slice(0, 120);
-}
-
 export class TriageService {
   private snapshotValue: Snapshot = { rows: [], checkedAt: null, truncated: false, error: null, renameErrors: [] };
   private agents = new Map<string, PaseoAgent>();
@@ -54,9 +41,24 @@ export class TriageService {
   private dirty = true;
   private lastAttempt = 0;
   private retryAt = 0;
-  constructor(private readonly settings: SettingsHandle, private readonly now = Date.now) {}
+  private titles?: TitleSync;
+  constructor(private readonly settings: SettingsHandle, private readonly now = Date.now, rename?: (id: string, title: string) => Promise<void>) {
+    if (rename) this.titles = new TitleSync(settings, rename, (agent, row) => {
+      this.inspected.set(agent.id, { fingerprint: fingerprint(agent), row });
+      this.snapshotValue = { ...this.snapshotValue, rows: this.snapshotValue.rows.map(old => old.id === agent.id ? row : old) };
+      this.sort(this.snapshotValue.rows);
+    }, () => { this.snapshotValue = { ...this.snapshotValue, renameErrors: ["Title update unavailable. Retrying in one minute."] }; }, now);
+  }
   invalidate(_agentId?: string): void { this.generation++; this.dirty = true; }
-  stop(): void { this.stopped = true; }
+  activity(api: PaseoApi, id: string, timeline?: readonly AgentTimelineItem[], parentId?: string | null): void {
+    this.invalidate(id); this.inspected.delete(id); this.titles?.request(api, id, timeline, undefined, !!parentId);
+  }
+  archived(id: string): void {
+    this.invalidate(id); this.agents.delete(id); this.inspected.delete(id); this.titles?.forget(id);
+    this.snapshotValue = { ...this.snapshotValue, rows: this.snapshotValue.rows.filter(row => row.id !== id) };
+  }
+  settingsChanged(): void { this.invalidate(); this.titles?.settingsChanged(); }
+  stop(): void { this.stopped = true; this.titles?.stop(); }
   async snapshot(api: PaseoApi, refresh: boolean): Promise<Snapshot> {
     if (this.stopped) return this.snapshotValue;
     const previous = this.snapshotValue.checkedAt ? Date.parse(this.snapshotValue.checkedAt) : 0;
@@ -89,7 +91,7 @@ export class TriageService {
         cursor = result.pageInfo.nextCursor ?? undefined; hasMore = result.pageInfo.hasMore; pages++;
       } while (agents.length < settings.maxSessions && hasMore && cursor && pages < 3);
       if (this.stopped) return;
-      // 사이드바·새로고침은 메타데이터만 읽는다. 숨은 기록 복원과 제목 변경을 하지 않는다.
+      // 목록은 메타데이터만 읽고 제목 쓰기는 별도의 제한된 큐로 보낸다.
       this.agents = new Map(agents.map(agent => [agent.id, agent]));
       for (const id of this.inspected.keys()) if (!this.agents.has(id)) this.inspected.delete(id);
       const rows = agents.map(agent => {
@@ -99,6 +101,7 @@ export class TriageService {
       }); this.sort(rows);
       this.snapshotValue = { rows, checkedAt: new Date(this.now()).toISOString(),
         truncated: hasMore || agents.length >= settings.maxSessions, error: null, renameErrors: [] };
+      for (const agent of agents) this.titles?.request(api, agent.id, undefined, agent);
       this.dirty = generation !== this.generation; this.retryAt = 0;
     } catch {
       this.retryAt = this.now() + 60_000;
@@ -127,6 +130,7 @@ export class TriageService {
     const latest = (await api.agents.ref(id).refresh())?.agent;
     if (!latest || fingerprint(latest) !== fingerprint(current)) throw new Error("The session changed. Refresh and try again.");
     const row = classifyAgent(latest, timeline.entries.map(entry => entry.item));
+    this.titles?.request(api, id, timeline.entries.map(entry => entry.item));
     this.inspected.set(id, { fingerprint: fingerprint(latest), row });
     this.snapshotValue = { ...this.snapshotValue, rows: this.snapshotValue.rows.map(old => old.id === id ? row : old) };
     this.sort(this.snapshotValue.rows);

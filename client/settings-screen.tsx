@@ -14,6 +14,12 @@ export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
     <View style={{ gap: 16 }}>
       <SettingsSection title="Sessions">
         <SettingsCard>
+          <SettingsSwitch
+            label="Update title icons"
+            hint="Update session and workspace icons when their status changes."
+            value={settings.values.renameTitles}
+            onValueChange={(value) => void settings.save({ ...settings.values, renameTitles: value }, settings.revision)}
+          />
           <SettingsSelect
             label="Maximum sessions"
             value={String(settings.values.maxSessions)}
