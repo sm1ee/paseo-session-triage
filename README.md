@@ -18,22 +18,27 @@ Session titles, paths, and message text are redacted in this screenshot.
 | 🟠 | Needs review | The work is unfinished, or the latest update is unclear. |
 | 👀 | Waiting on a result | The agent appears to be waiting for CI, a build, a deployment, or a review. |
 | ⏳ | Working | The agent is running a turn or starting up. |
+| ○ | Idle | No active turn. Use Check reply to classify the latest response. |
 | ✅ | Done | The latest reply says the work is done. Check the result yourself. |
 
 Pending permission requests come from Paseo. Requests found in chat are inferred from the wording. A ✅ label does not verify that a build, test, deployment, or submission succeeded.
 
 ## Install
 
-Requires Paseo 0.11.4 or later. Install the tagged GitHub version:
+Requires stable Paseo 0.11.4 through 0.12.x. Install the tagged GitHub version:
 
 ```sh
-paseo plugin add git:sm1ee/paseo-session-triage --ref v0.1.9
+paseo plugin add git:sm1ee/paseo-session-triage --ref v0.1.10
 paseo plugin ls session-triage
 ```
 
 Open **Session triage** in the sidebar. To change the session limit or include subagents, open **Settings → Plugins → Session triage settings**.
 
 The sidebar shortcut is hidden in the iOS and Android apps. Use **Open session triage** in the Command Center to open it there.
+
+![Session triage settings showing the title icon option](assets/session-triage-settings.png)
+
+This screenshot is cropped from the actual settings screen. Host details are outside the crop.
 
 For local development, clone this repository and run:
 
@@ -52,7 +57,9 @@ If the CLI is not on your `PATH` on macOS, use `/Applications/Paseo.app/Contents
 - The screen and sidebar check metadata every two minutes while open. Scans share an in-flight request, debounce events, and back off after failures.
 - Automatic checks read metadata only. Idle sessions stay unclassified until you choose **Check reply**. That action reads up to 20 recent timeline items from one idle session. Results stay in memory while its metadata is unchanged.
 - Chat-based labels are rules of thumb. Unclear replies and failed timeline reads show 🟠.
-- Session and workspace titles are not changed. Old title-update settings are ignored; existing names are kept.
+- **Update title icons** restores automatic session and workspace markers when enabled. It updates the affected session after a start, end, permission, or close event. Existing settings are respected. The initial bounded metadata scan also repairs old markers.
+- Title updates run one at a time, at most once per 300 ms. Repeated events are merged, matching titles are skipped, and failures back off for one minute. One local authenticated connection handles agent names, without starting a CLI for each change.
+- Completed-turn events already contain recent messages. Triage uses up to 20 of those items without refetching a timeline. Idle sessions without a recent event still use **Check reply** for chat-based classification.
 - The plugin cannot send messages, approve requests, stop agents, delete sessions, or archive them. It does not send conversation text to another model or external service. It keeps short excerpts in memory and settings in Paseo's host settings store.
 
 ## Paseo plugin catalog
