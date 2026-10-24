@@ -1,6 +1,6 @@
 # Session triage for Paseo
 
-See which Paseo sessions need your input, have a draft ready, are waiting on a result, or are done. Open a card to jump to that session. The sidebar shows how many sessions need attention.
+See which Paseo sessions need your input, have a draft ready, are waiting on a result, or are done. Open a row to jump to that session. The sidebar shows how many sessions need attention. Filter the list by status, and open Icon guide when you need the emoji meanings.
 
 Credit to [chaenmasahiro0425](https://github.com/chaenmasahiro0425) for [claude-session-triage](https://github.com/chaenmasahiro0425/claude-session-triage), the Claude Desktop skill that gave me the idea to mark sessions with emoji. This plugin is a separate implementation for Paseo. The original project is [MIT licensed](https://github.com/chaenmasahiro0425/claude-session-triage/blob/main/LICENSE).
 
@@ -28,7 +28,7 @@ Pending permission requests come from Paseo. Requests found in chat are inferred
 Requires stable Paseo 0.11.4 through 0.12.x. Install the tagged GitHub version:
 
 ```sh
-paseo plugin add git:sm1ee/paseo-session-triage --ref v0.1.10
+paseo plugin add git:sm1ee/paseo-session-triage --ref v0.1.11
 paseo plugin ls session-triage
 ```
 
