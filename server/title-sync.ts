@@ -29,7 +29,10 @@ export class TitleSync {
     if ((subagent || seed?.labels["paseo.parent-agent-id"]) && !this.config?.includeSubagents) return;
     if (seed && !timeline && this.applied.get(id) === signature(seed)) return;
     if (!this.queue.has(id) && this.queue.size >= 200) return;
-    this.queue.set(id, { api, id, timeline: timeline?.slice(-20) ?? this.queue.get(id)?.timeline, seed });
+    // Paseo 0.13 sends an empty timeline on turn end. Missing chat evidence is
+    // metadata-only, not proof of unfinished work; do not restore a conversation.
+    const recent = timeline?.length ? timeline.slice(-20) : undefined;
+    this.queue.set(id, { api, id, timeline: recent ?? this.queue.get(id)?.timeline, seed });
     this.schedule();
   }
   forget(id: string): void {

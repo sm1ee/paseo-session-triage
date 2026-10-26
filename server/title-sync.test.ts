@@ -51,6 +51,13 @@ describe("이벤트 기반 제목 아이콘 갱신", () => {
     expect(f.rename.mock.calls[0]?.[1]).toMatch(/^✅/u);
     expect(f.timeline).not.toHaveBeenCalled();
   });
+  it("0.13의 빈 종료 타임라인은 유휴 메타데이터만 반영하고 본문을 추가 조회하지 않는다", async () => {
+    const f = fixture(); f.agent.status = "idle"; f.agent.activeTurn = null;
+    sync.request(f.api, f.agent.id, []); await vi.advanceTimersByTimeAsync(300);
+    expect(f.rename.mock.calls[0]?.[1]).toMatch(/^○/u);
+    expect(f.accepted.mock.calls[0]?.[1].state).toBe("idle");
+    expect(f.timeline).not.toHaveBeenCalled(); expect(f.list).not.toHaveBeenCalled();
+  });
   it("보관된 세션의 이전 오류가 다른 세션의 워크스페이스 표시를 덮지 않는다", async () => {
     const f = fixture(); f.agent.status = "error"; f.agent.activeTurn = null;
     sync.request(f.api, f.agent.id); await vi.advanceTimersByTimeAsync(300);
