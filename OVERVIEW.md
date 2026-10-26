@@ -17,6 +17,6 @@ Session triage checks Paseo metadata in the background. Idle sessions stay uncla
 
 By default, it shows the 20 most recent top-level sessions. Settings let you include subagents and change the limit. The screen and sidebar check for updates while open, and you can refresh the list yourself.
 
-The optional Update title icons setting updates session and workspace markers after lifecycle events. Existing title-update preferences are respected. Changes are queued one at a time, repeated events are merged, and unchanged titles are skipped. Completed-turn messages come from the event itself; no background conversation scan is added. The plugin does not send messages, approve permissions, stop agents, delete sessions, or archive them.
+The optional Update title icons setting updates session and workspace markers after lifecycle events. Existing title-update preferences are respected. Changes are queued one at a time, repeated events are merged, and unchanged titles are skipped. When a completed-turn event includes recent messages, the plugin uses those items. Paseo 0.13 sends no message content in this event; metadata updates the icon, and Check reply classifies the response when requested. No background conversation scan is added. The plugin does not send messages, approve permissions, stop agents, delete sessions, or archive them.
 
-Conversation excerpts stay in the plugin's memory. They are not sent to another model or external service. Settings are stored by Paseo. Requires stable Paseo 0.11.4 through 0.12.x.
+Conversation excerpts stay in the plugin's memory. They are not sent to another model or external service. Settings are stored by Paseo. Requires stable Paseo 0.11.4 or later.

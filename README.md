@@ -25,10 +25,10 @@ Pending permission requests come from Paseo. Requests found in chat are inferred
 
 ## Install
 
-Requires stable Paseo 0.11.4 through 0.12.x. Install the tagged GitHub version:
+Requires stable Paseo 0.11.4 or later. Install the tagged GitHub version:
 
 ```sh
-paseo plugin add git:sm1ee/paseo-session-triage --ref v0.1.11
+paseo plugin add git:sm1ee/paseo-session-triage --ref v0.1.12
 paseo plugin ls session-triage
 ```
 
@@ -51,6 +51,8 @@ paseo plugin add /absolute/path/to/paseo-session-triage
 
 If the CLI is not on your `PATH` on macOS, use `/Applications/Paseo.app/Contents/Resources/bin/paseo`. After changing local code, run `paseo plugin reload session-triage`.
 
+The manifest declares only `>=0.11.4`, without a minor-version upper bound. Compatibility is checked with Paseo 0.11.4, 0.12.0, and 0.13.0. A future breaking API change may still need a plugin update. SDK and runtime dependencies remain pinned for reproducible builds.
+
 ## How it works
 
 - The default view shows up to 20 recent top-level sessions. You can include subagents or raise the limit in Settings.
@@ -59,7 +61,7 @@ If the CLI is not on your `PATH` on macOS, use `/Applications/Paseo.app/Contents
 - Chat-based labels are rules of thumb. Unclear replies and failed timeline reads show 🟠.
 - **Update title icons** restores automatic session and workspace markers when enabled. It updates the affected session after a start, end, permission, or close event. Existing settings are respected. The initial bounded metadata scan also repairs old markers.
 - Title updates run one at a time, at most once per 300 ms. Repeated events are merged, matching titles are skipped, and failures back off for one minute. One local authenticated connection handles agent names, without starting a CLI for each change.
-- Completed-turn events already contain recent messages. Triage uses up to 20 of those items without refetching a timeline. Idle sessions without a recent event still use **Check reply** for chat-based classification.
+- On Paseo 0.11 and 0.12, completed-turn events include recent messages. Triage uses up to 20 of those items without refetching a timeline. Paseo 0.13 sends an empty timeline, so the icon follows session metadata until you choose **Check reply**. The plugin does not add a background conversation fetch to replace the removed event data.
 - The plugin cannot send messages, approve requests, stop agents, delete sessions, or archive them. It does not send conversation text to another model or external service. It keeps short excerpts in memory and settings in Paseo's host settings store.
 
 ## Paseo plugin catalog
