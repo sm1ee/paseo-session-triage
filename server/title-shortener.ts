@@ -5,6 +5,8 @@ import { cheapestThinking, needsShortTitle, readShortTitle } from "../shared/sho
 import { triagePreferences } from "../shared/triage";
 import type { TitleBudget } from "./title-budget";
 import { TITLE_PROVIDERS, type GenerateTitle } from "./title-generator";
+import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
+import { titleContext, TITLE_CONTEXT_ITEMS, type TitleContextMessage } from "./title-context";
 
 type Preferences = ReturnType<typeof triagePreferences.schema.parse>;
 type Result = { changed: boolean; message: string };
@@ -26,11 +28,12 @@ export class TitleShortener {
   private busy = false;
   private controller?: AbortController;
   private timer?: ReturnType<typeof setTimeout>;
-  private queue = new Map<string, { api: PaseoApi; agent: PluginHookAgent }>();
+  private queue = new Map<string, { api: PaseoApi; agent: PluginHookAgent; context: TitleContextMessage[] }>();
   private preferences?: Promise<Preferences>;
   private lastAutomatic = Number.NEGATIVE_INFINITY;
   private enabled?: boolean;
   private longOnly?: boolean;
+  private source?: Preferences["titleSource"];
   private activeId?: string;
   private drained: Promise<void> = Promise.resolve();
   private lastError: string | null = null;
@@ -40,19 +43,20 @@ export class TitleShortener {
     private readonly supported: () => Promise<boolean> = async () => true) {}
 
   settingsChanged(): void {
-    this.generation++; this.preferences = undefined; this.enabled = undefined; this.longOnly = undefined; this.queue.clear();
+    this.generation++; this.preferences = undefined; this.enabled = undefined; this.longOnly = undefined; this.source = undefined; this.queue.clear();
     clearTimeout(this.timer); this.timer = undefined; this.controller?.abort();
   }
   stop(): Promise<void> { this.stopped = true; this.settingsChanged(); return this.drained; }
   forget(id: string): void { this.queue.delete(id); if (this.activeId === id) this.controller?.abort(); }
   status(): string | null { return this.lastError; }
 
-  onTurnEnd(api: PaseoApi, agent: PluginHookAgent): void {
-    if (this.stopped || this.enabled === false || agent.parentAgentId || !agent.workspaceId || !needsShortTitle(agent.title || "", this.longOnly ?? false)) return;
+  onTurnEnd(api: PaseoApi, agent: PluginHookAgent, timeline: readonly AgentTimelineItem[] = []): void {
+    if (this.stopped || this.enabled === false || agent.parentAgentId || !agent.workspaceId ||
+        this.source === "title" && !needsShortTitle(agent.title || "", this.longOnly ?? false)) return;
     // Metadata from the event is enough to queue candidates. No listing,
     // conversation read, or model discovery happens in a lifecycle handler.
     if (this.queue.size >= 10 && !this.queue.has(agent.id)) return;
-    this.queue.set(agent.id, { api, agent }); this.schedule();
+    this.queue.set(agent.id, { api, agent, context: this.source === "title" ? [] : titleContext(timeline) }); this.schedule();
   }
   private schedule(): void {
     if (this.stopped || this.busy || this.timer || !this.queue.size) return;
@@ -67,10 +71,10 @@ export class TitleShortener {
       const settings = await this.config();
       if (!settings.shortenTitles) { this.queue.clear(); return; }
       if (this.stopped || generation !== this.generation) return;
-      if (!needsShortTitle(work.agent.title || "", settings.titleLongOnly)) return;
+      if (settings.titleSource === "title" && !needsShortTitle(work.agent.title || "", settings.titleLongOnly)) return;
       this.lastAutomatic = this.now();
-      await this.shorten(work.api, work.agent.id); this.lastError = null;
-    } catch { this.lastError = "Could not shorten a title. Check the selected model in Settings."; }
+      await this.shorten(work.api, work.agent.id, work.context); this.lastError = null;
+    } catch { this.lastError = "Could not generate a title. Check the title settings and session availability."; }
     finally { this.schedule(); }
   }
   private config(): Promise<Preferences> {
@@ -78,11 +82,11 @@ export class TitleShortener {
     return this.preferences ??= this.settings.read().then(state => {
       if (state.status !== "ready") throw new Error("Title settings are unavailable.");
       const values = triagePreferences.schema.parse(state.values);
-      if (generation === this.generation) { this.enabled = values.shortenTitles; this.longOnly = values.titleLongOnly; }
+      if (generation === this.generation) { this.enabled = values.shortenTitles; this.longOnly = values.titleLongOnly; this.source = values.titleSource; }
       return values;
     });
   }
-  async shorten(api: PaseoApi, id: string): Promise<Result> {
+  async shorten(api: PaseoApi, id: string, eventContext: readonly TitleContextMessage[] = [], manual = false): Promise<Result> {
     if (this.stopped) throw new Error("Title shortening has stopped.");
     if (this.busy) throw new Error("Another title is being shortened.");
     this.busy = true;
@@ -93,7 +97,7 @@ export class TitleShortener {
     const timeout = setTimeout(() => abort.abort(), 45_000);
     try {
       const settings = await this.config();
-      if (!settings.shortenTitles) throw new Error("Turn on Shorten titles in Settings first.");
+      if (!settings.shortenTitles) throw new Error("Turn on Generate titles in Settings first.");
       if (!settings.titleProvider || !settings.titleModel) throw new Error("Choose a title model in Settings first.");
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };
       const agent = (await api.agents.ref(id).refresh())?.agent;
@@ -103,7 +107,8 @@ export class TitleShortener {
       if (agent.activeTurn || agent.pendingPermissions.length || ["initializing", "error"].includes(agent.status))
         return { changed: false, message: "Try again when this session is idle." };
       const original = agent.title || "";
-      if (!needsShortTitle(original, settings.titleLongOnly)) return { changed: false, message: settings.titleLongOnly ? "Turn off Long titles only in Settings to include shorter titles." : "This title is already too short to shorten." };
+      const lastUserMessageAt = agent.lastUserMessageAt;
+      if (settings.titleSource === "title" && !needsShortTitle(original, settings.titleLongOnly)) return { changed: false, message: settings.titleLongOnly ? "Turn off Long titles only in Settings to include shorter titles." : "This title is already too short to shorten." };
       if (!await this.supported()) throw new Error("Title shortening requires Paseo 0.12 or later with background workspaces.");
       const { models } = await titleModels(api);
       const model = models.find(model => model.provider === settings.titleProvider && model.id === settings.titleModel);
@@ -111,16 +116,33 @@ export class TitleShortener {
       const thinking = settings.titleThinking || cheapestThinking(model.thinkingOptions);
       if (thinking && !model.thinkingOptions.some(option => option.id === thinking)) throw new Error("Choose a supported reasoning level in Settings.");
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };
-      if (!await this.budget.claim(id, settings.titleDailyLimit)) return { changed: false, message: "Already attempted for this session, or the daily limit was reached." };
+      const claimed = manual ? await this.budget.claim(id, settings.titleDailyLimit, true) : await this.budget.claim(id, settings.titleDailyLimit);
+      if (!claimed) return { changed: false, message: "Already attempted for this session, or the daily limit was reached." };
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };
+      let context: readonly TitleContextMessage[] | undefined;
+      if (settings.titleSource === "conversation") {
+        context = eventContext;
+        if (!context.length) {
+          const timeline = await api.agents.ref(id).timeline.refetch({ direction: "tail", projection: "canonical", limit: TITLE_CONTEXT_ITEMS });
+          if (timeline.error) throw new Error("Could not read recent messages. The title was kept.");
+          context = titleContext(timeline.entries.map(entry => entry.item));
+        }
+        if (!valid()) return { changed: false, message: "Title generation cancelled." };
+        if (!context.length) return { changed: false, message: "No recent task messages available. The title was kept." };
+      }
       // Once reserved, failures and ambiguous deliveries remain spent. Never
       // retry automatically or switch to a different/billable model.
-      const response = await this.generate({ title: original, provider: model.provider, model: model.id, thinking, signal: abort.signal });
-      const title = readShortTitle(response, original);
-      if (!title) return { changed: false, message: "No valid shorter title was returned. The original title was kept." };
+      const response = await this.generate({ title: original, context, provider: model.provider, model: model.id, thinking, signal: abort.signal });
+      const title = readShortTitle(response, original, settings.titleSource);
+      if (!title) return { changed: false, message: "No valid title change was returned. The original title was kept." };
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };
+      if (settings.titleSource === "conversation") {
+        const latest = (await api.agents.ref(id).refresh())?.agent;
+        if (!valid() || !latest || latest.activeTurn || latest.lastUserMessageAt !== lastUserMessageAt)
+          return { changed: false, message: "The session changed. Its title was kept." };
+      }
       const changed = await this.apply(api, id, original, title, valid);
-      return { changed, message: changed ? "Title shortened." : "The session changed. Its title was kept." };
+      return { changed, message: changed ? "Title updated." : "The session changed. Its title was kept." };
     } finally {
       clearTimeout(timeout); if (this.controller === abort) this.controller = undefined;
       this.busy = false; this.activeId = undefined; finish(); this.schedule();

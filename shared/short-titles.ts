@@ -33,13 +33,14 @@ export function filterTitleModels(models: readonly TitleModel[], search: string,
     terms.every(term => `${model.provider} ${model.id} ${model.label}`.toLowerCase().includes(term)));
 }
 
-export function readShortTitle(text: string, original: string): string | null {
+export function readShortTitle(text: string, original: string, source: "title" | "conversation" = "title"): string | null {
   let title: unknown;
   try { title = JSON.parse(text.trim()).title; } catch { return null; }
   if (typeof title !== "string" || /[\r\n\p{Cc}\p{Cf}]/u.test(title)) return null;
   const body = title.trim();
   const size = Array.from(body).length;
-  if (size < 4 || size > SHORT_TITLE_LENGTH || size >= Array.from(titleParts(original).body).length ||
+  if (size < 4 || size > SHORT_TITLE_LENGTH || body === titleParts(original).body ||
+      source === "title" && size >= Array.from(titleParts(original).body).length ||
       titleParts(body).prefix || /https?:\/\//iu.test(body)) return null;
   return body;
 }

@@ -14,7 +14,8 @@ function fixture(overrides: Record<string, unknown> = {}) {
   const settings = { read: vi.fn(async () => ({ status: "ready", values })) } as unknown as PluginSettings<typeof triagePreferences.schema>;
   const agent = { id: "session", title: `⏳ 〖work〗${long}`, workspaceId: "workspace", labels: {}, archivedAt: null,
     status: "idle", activeTurn: null, pendingPermissions: [] } as unknown as PaseoAgent;
-  const refresh = vi.fn(async () => ({ agent })), timeline = vi.fn(), list = vi.fn(), send = vi.fn();
+  const refresh = vi.fn(async () => ({ agent })), timeline = vi.fn(async () => ({ error: null as string | null,
+    entries: [{ item: { type: "assistant_message" as const, text: "Fix mobile scrolling" } }] })), list = vi.fn(), send = vi.fn();
   const entry = { provider: "codex", enabled: true, status: "ready", models: [{ id: "fixture-mini", label: "Fixture mini", thinkingOptions: [{ id: "high", label: "High" }, { id: "low", label: "Low" }] }] };
   const snapshot = vi.fn(async () => ({ entries: [entry] }));
   const api = { agents: { ref: () => ({ refresh, timeline: { refetch: timeline }, send }), list }, providers: { snapshot } } as unknown as PaseoApi;
@@ -163,6 +164,46 @@ describe("제목 요약의 호출 및 비용 제한", () => {
   });
   it("모델 목록은 활성화된 지원 Provider의 선택 가능한 모델만 반환한다", async () => {
     const f = fixture(); f.entry.enabled = false; expect((await titleModels(f.api)).models).toEqual([]);
+  });
+  it("기존 설정은 대화 읽기 없이 제목만 전송하는 모드를 유지한다", async () => {
+    expect(triagePreferences.schema.parse({}).titleSource).toBe("title");
+    const f = fixture(); await service.shorten(f.api, "session", [{ role: "assistant", text: "Do not send this" }]);
+    expect(f.timeline).not.toHaveBeenCalled(); expect(f.generate.mock.calls[0][0].context).toBeUndefined();
+  });
+  it("대화 모드는 짧은 goal 제목도 처리하고 예산 확보 뒤 최근 6개 항목만 조회한다", async () => {
+    const f = fixture({ titleSource: "conversation" }); f.agent.title = "goal";
+    expect((await service.shorten(f.api, "session")).changed).toBe(true);
+    expect(f.timeline).toHaveBeenCalledExactlyOnceWith({ direction: "tail", projection: "canonical", limit: 6 });
+    expect(f.generate.mock.calls[0][0].context).toEqual([{ role: "assistant", text: "Fix mobile scrolling" }]);
+    expect(f.budget.claim.mock.invocationCallOrder[0]).toBeLessThan(f.timeline.mock.invocationCallOrder[0]);
+    expect(f.list).not.toHaveBeenCalled(); expect(f.send).not.toHaveBeenCalled();
+  });
+  it("완료 이벤트에 대화가 있으면 제한된 발췌를 재사용하고 추가 타임라인 조회를 하지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation" }); f.agent.title = "goal";
+    service.onTurnEnd(f.api, { ...f.event, title: "goal" }, [{ type: "assistant_message", text: "Fix mobile scrolling" }]);
+    expect(f.timeline).not.toHaveBeenCalled(); await vi.advanceTimersByTimeAsync(2000);
+    expect(f.generate).toHaveBeenCalledOnce(); expect(f.timeline).not.toHaveBeenCalled();
+  });
+  it("대화 모드도 한도를 넘었으면 메시지를 읽거나 모델을 호출하지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation" }); f.budget.claim.mockResolvedValue(false);
+    expect((await service.shorten(f.api, "session")).changed).toBe(false);
+    expect(f.timeline).not.toHaveBeenCalled(); expect(f.generate).not.toHaveBeenCalled();
+  });
+  it("대화 내용이 없거나 읽기 실패면 제목만으로 대신 호출하지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation" }); f.timeline.mockResolvedValue({ error: null, entries: [] });
+    expect((await service.shorten(f.api, "session")).changed).toBe(false); expect(f.generate).not.toHaveBeenCalled();
+    f.timeline.mockResolvedValue({ error: "unavailable", entries: [] });
+    await expect(service.shorten(f.api, "session")).rejects.toThrow("recent messages"); expect(f.generate).not.toHaveBeenCalled();
+  });
+  it("대화 기반 생성 도중 새 사용자 메시지가 오면 결과를 버린다", async () => {
+    const f = fixture({ titleSource: "conversation" });
+    f.generate.mockImplementationOnce(async () => { f.agent.lastUserMessageAt = "2026-10-29T03:01:00Z"; return JSON.stringify({ title: short }); });
+    expect((await service.shorten(f.api, "session")).changed).toBe(false); expect(f.apply).not.toHaveBeenCalled();
+  });
+  it("수동 재생성은 반복 허용을 명시하고 같은 일일 예산을 사용한다", async () => {
+    const f = fixture({ titleSource: "conversation" });
+    expect((await service.shorten(f.api, "session", [], true)).changed).toBe(true);
+    expect(f.budget.claim).toHaveBeenCalledExactlyOnceWith("session", 5, true);
   });
 });
 

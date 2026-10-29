@@ -18,7 +18,7 @@ export default function contribute(server: PluginServerContext) {
   const shortener = new TitleShortener(settings, budget, input => generator.generate(input),
     (api, id, expected, title, valid) => service.shortenTitle(api, id, expected, title, valid), Date.now, () => generator.supported());
   server.handle(shortTitleModelsRpc, async (_, { paseo }) => ({ ...await titleModels(paseo), supported: await generator.supported() }));
-  server.handle(shortenTitleRpc, ({ id }, { paseo }) => shortener.shorten(paseo, id));
+  server.handle(shortenTitleRpc, ({ id }, { paseo }) => shortener.shorten(paseo, id, [], true));
   server.handle(triageSnapshotRpc, async ({ refresh }, { paseo }) => {
     const snapshot = await service.snapshot(paseo, refresh);
     return { ...snapshot, shortTitleError: shortener.status() };
@@ -31,11 +31,14 @@ export default function contribute(server: PluginServerContext) {
 
   const removeHooks = [
     server.on("agent.created", (event, { paseo }) => activity(paseo, event.agent.id, undefined, event.agent.parentAgentId)),
-    server.on("agent.turn_started", (event, { paseo }) => activity(paseo, event.agent.id, undefined, event.agent.parentAgentId)),
+    server.on("agent.turn_started", (event, { paseo }) => {
+      shortener.forget(event.agent.id);
+      activity(paseo, event.agent.id, undefined, event.agent.parentAgentId);
+    }),
     server.on("agent.turn_ended", (event, { paseo }) => {
       if (generator.owns(event.agent.id)) return;
       activity(paseo, event.agent.id, event.timeline, event.agent.parentAgentId);
-      if (event.outcome.kind === "completed") shortener.onTurnEnd(paseo, event.agent);
+      if (event.outcome.kind === "completed") shortener.onTurnEnd(paseo, event.agent, event.timeline);
     }),
     server.on("agent.permission_requested", (event, { paseo }) => activity(paseo, event.agent.id, undefined, event.agent.parentAgentId)),
     server.on("agent.permission_resolved", (event, { paseo }) => activity(paseo, event.agent.id, undefined, event.agent.parentAgentId)),

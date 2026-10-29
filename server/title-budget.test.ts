@@ -33,4 +33,13 @@ describe("지속되는 제목 요청 예산", () => {
     await expect(new FileTitleBudget(file).claim("session", 5)).rejects.toThrow();
     expect(await readFile(file, "utf8")).toBe("preserved");
   });
+  it("명시적인 수동 재생성도 같은 일일 상한을 쓰며 자동 시도 기록은 유지한다", async () => {
+    const budget = new FileTitleBudget(directory);
+    expect(await budget.claim("session", 2)).toBe(true);
+    expect(await budget.claim("session", 2)).toBe(false);
+    expect(await budget.claim("session", 2, true)).toBe(true);
+    expect(await budget.claim("session", 2, true)).toBe(false);
+    expect(await budget.claim("session", 3)).toBe(false);
+    expect(await budget.claim("session", 3, true)).toBe(true);
+  });
 });
