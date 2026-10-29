@@ -10,8 +10,9 @@ export function titleParts(title: string) {
   return { prefix, body: title.slice(prefix.length).replace(/\s+/gu, " ").trim() };
 }
 
-export function needsShortTitle(title: string): boolean {
-  return Array.from(titleParts(title).body).length > SHORT_TITLE_LENGTH;
+export function needsShortTitle(title: string, longOnly = true): boolean {
+  // A valid result needs at least four characters and must be shorter.
+  return Array.from(titleParts(title).body).length > (longOnly ? SHORT_TITLE_LENGTH : 4);
 }
 
 export function cheapestThinking(options: readonly { id: string }[]): string {

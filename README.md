@@ -28,7 +28,7 @@ Pending permission requests come from Paseo. Requests found in chat are inferred
 Requires stable Paseo 0.11.4 or later. Install the tagged GitHub version:
 
 ```sh
-paseo plugin add git:sm1ee/paseo-session-triage --ref v0.2.2
+paseo plugin add git:sm1ee/paseo-session-triage --ref v0.2.3
 paseo plugin ls session-triage
 ```
 
@@ -36,11 +36,11 @@ Open **Session triage** in the sidebar, then use **Settings** in its top-right t
 
 ## Short titles
 
-Open **Session triage settings → Short titles**, choose a **Title model**, and turn on **Shorten long titles**. It is off by default. Models come from your enabled Claude, Codex, OpenCode, and OMP providers in Paseo; no separate API key is needed. Title shortening requires Paseo 0.12 or later with background workspace support; other triage features still support 0.11.4. For models with reasoning settings, the lowest advertised level is selected first and can be changed.
+Open **Session triage settings → Short titles**, choose a **Title model**, and turn on **Shorten titles**. It is off by default. Models come from your enabled Claude, Codex, OpenCode, and OMP providers in Paseo; no separate API key is needed. Title shortening requires Paseo 0.12 or later with background workspace support; other triage features still support 0.11.4. For models with reasoning settings, the lowest advertised level is selected first and can be changed.
 
 The model picker has a searchable, scrolling list and Provider filters. It stays within the available screen space on mobile, including when the keyboard is open. Reasoning defaults to off/none when supported, then minimal, low, or the lowest remaining named level. A reasoning level you choose manually is respected.
 
-- Only top-level session titles longer than 40 characters are considered, excluding the status icon and folder prefix. Existing sessions are considered after their next completed turn; enabling the feature does not scan or rename your session history.
+- By default, **Long titles only** considers top-level session titles longer than 40 characters, excluding the status icon and folder prefix. Turn it off to include titles of 5–40 characters. Only strictly shorter results are saved; titles of four characters or fewer are skipped without a model call. Existing sessions are considered after their next completed turn; changing the setting does not scan or rename your session history.
 - Use **Shorten session title** in the Command Center of an idle session to shorten an existing title now. The same toggle and request limits apply.
 - A session gets at most one model attempt, including failed or cancelled attempts. Records survive plugin reloads. The default daily cap is **5 requests**, adjustable from 1 to 50; the day resets at midnight UTC. This is a request cap, not a monetary budget.
 - Only the title is sent, capped at 320 Unicode characters. The plugin does not load conversation history or attach files. It asks the helper to return only a title. Provider instructions, tool definitions, and runtime overhead can still add tokens; a provider-backed agent costs more than a bare text-completion request. Pick a small model if cost matters.
