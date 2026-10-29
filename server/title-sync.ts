@@ -4,6 +4,7 @@ import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { TRIAGE_ORDER, triagePreferences, type TriageRow } from "../shared/triage";
 import { classifyAgent } from "./classifier";
 import { desiredTitle, desiredWorkspaceTitle } from "./titles";
+import { titleParts } from "../shared/short-titles";
 
 type Settings = PluginSettings<typeof triagePreferences.schema>;
 interface Work { api: PaseoApi; id: string; timeline?: readonly AgentTimelineItem[]; seed?: PaseoAgent }
@@ -22,6 +23,7 @@ export class TitleSync {
   private generation = 0;
   private config: ReturnType<typeof triagePreferences.schema.parse> | null = null;
   private retryAt = 0;
+  private writes: Promise<unknown> = Promise.resolve();
   constructor(private readonly settings: Settings, private readonly rename: (id: string, title: string) => Promise<void>,
     private readonly accepted: (agent: PaseoAgent, row: TriageRow) => void, private readonly failed: () => void, private readonly now = Date.now) {}
   request(api: PaseoApi, id: string, timeline?: readonly AgentTimelineItem[], seed?: PaseoAgent, subagent = false): void {
@@ -52,12 +54,38 @@ export class TitleSync {
     if (this.stopped || this.working) return;
     const work = this.queue.values().next().value; if (!work) return;
     this.queue.delete(work.id); this.working = true; this.activeId = work.id; this.activeCancelled = false;
-    try { await this.apply(work); this.retryAt = 0; }
+    try { await this.exclusive(() => this.apply(work)); this.retryAt = 0; }
     catch {
       this.retryAt = this.now() + 60_000; this.failed();
       if (!this.stopped && !this.queue.has(work.id) && this.queue.size < 200) this.queue.set(work.id, work);
     }
     finally { this.working = false; this.activeId = null; this.schedule(); }
+  }
+  private exclusive<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = this.writes.then(operation);
+    this.writes = pending.catch(() => {}); return pending;
+  }
+  shorten(api: PaseoApi, id: string, expected: string, title: string, valid: () => boolean): Promise<boolean> {
+    const generation = this.generation;
+    return this.exclusive(async () => {
+      const current = () => !this.stopped && valid() && generation === this.generation;
+      if (!current()) return false;
+      const agent = (await api.agents.ref(id).refresh())?.agent;
+      if (!agent || agent.archivedAt || agent.labels["paseo.parent-agent-id"] ||
+          !agent.workspaceId || "internal" in agent && agent.internal || !current()) return false;
+      const parts = titleParts(agent.title || "");
+      if (parts.body !== titleParts(expected).body) return false;
+      await this.rename(id, `${parts.prefix}${title}`);
+      this.applied.delete(id);
+      // Only rename a matching workspace title. Never replace an independently
+      // named workspace or infer its title from a different agent.
+      const workspace = api.workspaces.ref(agent.workspaceId), state = await workspace.refresh();
+      if (state && !state.archivingAt && current()) {
+        const previous = titleParts(state.title || state.name);
+        if (previous.body === parts.body) await workspace.setTitle(`${previous.prefix}${title}`);
+      }
+      return true;
+    });
   }
   private async apply(work: Work): Promise<void> {
     const generation = this.generation, valid = () => !this.stopped && !this.activeCancelled && generation === this.generation && !this.queue.has(work.id);
@@ -65,7 +93,7 @@ export class TitleSync {
     if (!this.config.renameTitles || !valid()) return;
     const handle = work.api.agents.ref(work.id);
     let agent = (await handle.refresh())?.agent;
-    if (!agent || agent.archivedAt || "internal" in agent && agent.internal || !agent.workspaceId || !valid()) return;
+    if (!agent || agent.archivedAt || agent.labels["session-triage.title-helper"] === "1" || "internal" in agent && agent.internal || !agent.workspaceId || !valid()) return;
     const subagent = !!agent.labels["paseo.parent-agent-id"];
     if (subagent && !this.config.includeSubagents) return;
     if (!work.timeline && this.applied.get(agent.id) === signature(agent)) return;

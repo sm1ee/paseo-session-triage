@@ -1,7 +1,7 @@
 {
   "name": "session-triage",
   "private": true,
-  "version": "0.1.12",
+  "version": "0.2.0",
   "description": "See which Paseo sessions need your input, are still working, or are done.",
   "files": [
     "paseo-plugin.json",
@@ -21,8 +21,8 @@
     "test:mobile": "node scripts/check-mobile-syntax.mjs"
   },
   "devDependencies": {
-    "@getpaseo/plugin": "0.11.4",
-    "@getpaseo/protocol": "0.11.4",
+    "@getpaseo/plugin": "0.13.0",
+    "@getpaseo/protocol": "0.13.0",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^22.15.0",
     "@types/react": "~19.2.0",
@@ -34,7 +34,7 @@
     "zod": "^4.4.3"
   },
   "dependencies": {
-    "@getpaseo/client": "0.11.4",
+    "@getpaseo/client": "0.13.0",
     "ws": "8.18.3"
   }
 }

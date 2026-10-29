@@ -1,8 +1,9 @@
 import type { PluginClientContext, PluginSidebarItemProps } from "@getpaseo/plugin/client";
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
-import { Platform, Text } from "react-native";
+import { Alert, Platform, Text } from "react-native";
 import { TriageScreen, useTriageAttentionCount } from "./client/triage-screen";
 import { TriageSettingsScreen } from "./client/settings-screen";
+import { shortenTitleRpc } from "./shared/short-titles";
 
 function TriageItem({ currentScreen, openScreen, theme }: PluginSidebarItemProps) {
   const attention = useTriageAttentionCount();
@@ -39,7 +40,20 @@ export default function contribute(client: PluginClientContext) {
       openScreen({ screenId: "triage" });
     },
   });
+  const removeShorten = client.addCommandCenterItem({
+    id: "shorten-title", title: "Shorten session title", icon: "TextCursorInput",
+    keywords: ["title", "shorten", "rename"], context: "agent",
+    async onSelect({ agent, rpc }) {
+      try {
+        const result = await rpc(shortenTitleRpc, { id: agent.id });
+        Alert.alert("Short title", result.message);
+      } catch {
+        Alert.alert("Could not shorten title", "Check Short titles in Session triage settings, then try again when the session is idle.");
+      }
+    },
+  });
   return () => {
+    removeShorten();
     removeCommand();
     removeSettings();
     removeSidebar();

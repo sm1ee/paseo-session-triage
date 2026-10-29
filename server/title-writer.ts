@@ -53,6 +53,19 @@ export class TitleWriter {
       throw error;
     }
   }
+  async client(): Promise<DaemonClient> {
+    if (this.stopped) throw new Error("Title updates stopped.");
+    const pending = this.connection ??= this.open();
+    try {
+      const driver = await pending;
+      if (this.stopped || driver.getConnectionState().status !== "connected") throw new Error("Local title connection disconnected");
+      return driver;
+    } catch (error) {
+      if (this.connection === pending) this.connection = null;
+      void pending.then(driver => driver.close(), () => {});
+      throw error;
+    }
+  }
   async close(): Promise<void> {
     this.stopped = true;
     const pending = this.connection; this.connection = null;
