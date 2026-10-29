@@ -23,7 +23,7 @@ export function titlePrompt(title: string, context?: readonly TitleContextMessag
 
 export function titleAgentConfig(input: TitleGeneration, cwd: string): AgentSessionConfig {
   const base: AgentSessionConfig = {
-    provider: input.provider, model: input.model, cwd, title: "Shorten title",
+    provider: input.provider, model: input.model, cwd, title: "Shorten title", internal: true,
     systemPrompt: "You write short task titles. No tools. Output one JSON object only.",
     mcpServers: {}, toolPolicy: { preapproved: [] },
     ...(input.thinking ? { thinkingOptionId: input.thinking } : {}),

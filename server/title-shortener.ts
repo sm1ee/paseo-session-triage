@@ -1,4 +1,4 @@
-import type { PaseoApi } from "@getpaseo/client";
+import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
 import type { PluginHookAgent } from "@getpaseo/plugin/server";
 import type { PluginSettings } from "@getpaseo/plugin/server";
 import { cheapestThinking, needsShortTitle, readShortTitle } from "../shared/short-titles";
@@ -9,6 +9,8 @@ import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { titleContext, TITLE_CONTEXT_ITEMS, type TitleContextMessage } from "./title-context";
 import { TitleCadence } from "./title-cadence";
 import type { ActiveTitleGoal, ReadTitleGoal } from "./title-goal";
+import { titleActivityRevision, type TitleActivity } from "./title-activity";
+import { idleTitleCandidate } from "./title-idle";
 
 type Preferences = ReturnType<typeof triagePreferences.schema.parse>;
 type Result = { changed: boolean; message: string };
@@ -30,7 +32,7 @@ export class TitleShortener {
   private busy = false;
   private controller?: AbortController;
   private timer?: ReturnType<typeof setTimeout>;
-  private queue = new Map<string, { api: PaseoApi; agent: PluginHookAgent; context: TitleContextMessage[] }>();
+  private queue = new Map<string, { api: PaseoApi; agent: PluginHookAgent; context: TitleContextMessage[]; idle?: boolean }>();
   private preferences?: Promise<Preferences>;
   private lastAutomatic = Number.NEGATIVE_INFINITY;
   private enabled?: boolean;
@@ -40,13 +42,15 @@ export class TitleShortener {
   private cadence = new TitleCadence();
   private activeId?: string;
   private activeContext = false;
+  private activeIdle = false;
   private drained: Promise<void> = Promise.resolve();
   private lastError: string | null = null;
   constructor(private readonly settings: PluginSettings<typeof triagePreferences.schema>,
     private readonly budget: TitleBudget, private readonly generate: GenerateTitle,
     private readonly apply: ApplyShortTitle, private readonly now = Date.now,
     private readonly supported: () => Promise<boolean> = async () => true,
-    private readonly readGoal: ReadTitleGoal = async () => null) {}
+    private readonly readGoal: ReadTitleGoal = async () => null,
+    private readonly activity?: TitleActivity) {}
 
   settingsChanged(): void {
     this.generation++; this.preferences = undefined; this.enabled = undefined; this.longOnly = undefined; this.source = undefined; this.queue.clear();
@@ -59,6 +63,8 @@ export class TitleShortener {
     if (archived) this.cadence.forget(id);
   }
   turnStarted(id: string): void {
+    if (this.queue.get(id)?.idle) this.queue.delete(id);
+    if (this.activeId === id && this.activeIdle) this.controller?.abort();
     if (this.source === "title") { this.forget(id); return; }
     // A native Goal may start its next turn immediately. Keep a due task-title
     // job so it can verify that Goal without stopping the user's session.
@@ -66,6 +72,19 @@ export class TitleShortener {
     if (this.activeId === id && this.activeContext) this.controller?.abort();
   }
   status(): string | null { return this.lastError; }
+
+  async onIdle(api: PaseoApi, agent: PaseoAgent): Promise<void> {
+    const generation = this.generation;
+    if (this.stopped || !this.activity || !idleTitleCandidate(agent) || this.queue.has(agent.id) || this.activeId === agent.id || this.queue.size >= 10) return;
+    const settings = await this.config();
+    if (!settings.shortenTitles || !settings.titleIncludeIdle ||
+        settings.titleSource === "title" && !needsShortTitle(agent.title || "", settings.titleLongOnly)) return;
+    if (await this.activity.has(agent.id, titleActivityRevision(agent))) return;
+    if (this.stopped || generation !== this.generation || this.queue.has(agent.id) || this.activeId === agent.id || this.queue.size >= 10) return;
+    this.queue.set(agent.id, { api, agent: { id: agent.id, workspaceId: agent.workspaceId!, parentAgentId: null,
+      title: agent.title, provider: agent.provider, cwd: agent.cwd }, context: [], idle: true });
+    this.schedule();
+  }
 
   onTurnEnd(api: PaseoApi, agent: PluginHookAgent, timeline: readonly AgentTimelineItem[] = [], turnId?: string | null): void {
     if (this.stopped || this.enabled === false || agent.parentAgentId || !agent.workspaceId ||
@@ -91,14 +110,15 @@ export class TitleShortener {
       if (!settings.shortenTitles) { this.queue.clear(); return; }
       if (this.stopped || generation !== this.generation) return;
       if (settings.titleSource === "title" && !needsShortTitle(work.agent.title || "", settings.titleLongOnly)) return;
-      if (settings.titleSource === "conversation") {
+      if (work.idle && !settings.titleIncludeIdle) return;
+      if (settings.titleSource === "conversation" && !work.idle) {
         if (this.cadence.count(work.agent.id) < settings.titleUpdateEvery) return;
         // Failed/skipped attempts wait another full interval, never retrying the
         // same completion. Daily quotas persist independently across reloads.
         this.cadence.reset(work.agent.id);
       }
       this.lastAutomatic = this.now();
-      await this.shorten(work.api, work.agent.id, work.context); this.lastError = null;
+      await this.shorten(work.api, work.agent.id, work.context, false, !!work.idle); this.lastError = null;
     } catch { this.lastError = "Could not generate a title. Check the title settings and session availability."; }
     finally { this.schedule(); }
   }
@@ -114,13 +134,13 @@ export class TitleShortener {
       return values;
     });
   }
-  async shorten(api: PaseoApi, id: string, eventContext: readonly TitleContextMessage[] = [], manual = false): Promise<Result> {
+  async shorten(api: PaseoApi, id: string, eventContext: readonly TitleContextMessage[] = [], manual = false, idle = false): Promise<Result> {
     if (this.stopped) throw new Error("Title shortening has stopped.");
     if (this.busy) throw new Error("Another title is being shortened.");
     this.busy = true;
     let finish!: () => void;
     this.drained = new Promise(resolve => { finish = resolve; });
-    const generation = this.generation, abort = new AbortController(); this.controller = abort; this.activeId = id;
+    const generation = this.generation, abort = new AbortController(); this.controller = abort; this.activeId = id; this.activeIdle = idle;
     const valid = () => !this.stopped && !abort.signal.aborted && generation === this.generation;
     const timeout = setTimeout(() => abort.abort(), 45_000);
     try {
@@ -132,6 +152,9 @@ export class TitleShortener {
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };
       if (!agent || agent.archivedAt || !agent.workspaceId || agent.labels["paseo.parent-agent-id"] ||
           agent.labels["session-triage.title-helper"] === "1" || "internal" in agent && agent.internal) throw new Error("Choose an available top-level session.");
+      const revision = titleActivityRevision(agent);
+      if (idle && (!settings.titleIncludeIdle || !idleTitleCandidate(agent) || !this.activity || await this.activity.has(id, revision)))
+        return { changed: false, message: "No new idle session activity." };
       if (agent.activeTurn && settings.titleSource === "title" || agent.pendingPermissions.length || ["initializing", "error"].includes(agent.status))
         return { changed: false, message: "Try again when this session is idle." };
       const original = agent.title || "";
@@ -144,10 +167,11 @@ export class TitleShortener {
       const thinking = settings.titleThinking || cheapestThinking(model.thinkingOptions);
       if (thinking && !model.thinkingOptions.some(option => option.id === thinking)) throw new Error("Choose a supported reasoning level in Settings.");
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };
-      const repeat = manual || settings.titleSource === "conversation";
+      const repeat = manual || idle || settings.titleSource === "conversation";
       const claimed = repeat ? await this.budget.claim(id, settings.titleDailyLimit, true) : await this.budget.claim(id, settings.titleDailyLimit);
       if (!claimed) return { changed: false, message: "Already attempted for this session, or the daily limit was reached." };
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };
+      if (this.activity) await this.activity.mark(id, revision);
       if (manual) this.cadence.reset(id);
       let context: readonly TitleContextMessage[] | undefined;
       let goal: ActiveTitleGoal | null = null;
@@ -187,7 +211,7 @@ export class TitleShortener {
       return { changed, message: changed ? "Title updated." : "The session changed. Its title was kept." };
     } finally {
       clearTimeout(timeout); if (this.controller === abort) this.controller = undefined;
-      this.busy = false; this.activeId = undefined; this.activeContext = false; finish(); this.schedule();
+      this.busy = false; this.activeId = undefined; this.activeContext = false; this.activeIdle = false; finish(); this.schedule();
     }
   }
 }
