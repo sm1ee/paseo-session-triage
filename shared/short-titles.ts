@@ -15,7 +15,21 @@ export function needsShortTitle(title: string): boolean {
 }
 
 export function cheapestThinking(options: readonly { id: string }[]): string {
-  return ["none", "minimal", "low"].find(id => options.some(option => option.id === id)) ?? options[0]?.id ?? "";
+  for (const level of ["off", "disabled", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "ultracode"]) {
+    const match = options.find(option => option.id.toLowerCase() === level);
+    if (match) return match.id;
+  }
+  return options[0]?.id ?? "";
+}
+
+export interface TitleModel {
+  provider: string; id: string; label: string; thinkingOptions: { id: string; label: string }[];
+}
+
+export function filterTitleModels(models: readonly TitleModel[], search: string, provider: string): TitleModel[] {
+  const terms = search.trim().toLowerCase().split(/\s+/u).filter(Boolean);
+  return models.filter(model => (!provider || model.provider === provider) &&
+    terms.every(term => `${model.provider} ${model.id} ${model.label}`.toLowerCase().includes(term)));
 }
 
 export function readShortTitle(text: string, original: string): string | null {
