@@ -54,21 +54,24 @@ export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
           />
         </SettingsCard>
       </SettingsSection>
-      <SettingsSection title="Short titles">
+      <SettingsSection title="Session titles">
         <SettingsCard>
           <SettingsSwitch
-            label="Shorten titles"
-            hint="Once per session after a completed turn. Uses only the title, never the conversation."
+            label="Generate titles"
+            hint="Once per session after a completed turn. Regenerate manually from the Command Center."
             value={settings.values.shortenTitles}
             disabled={!supported && !settings.values.shortenTitles}
             onValueChange={(value) => void settings.save({ ...settings.values, shortenTitles: value }, settings.revision)}
           />
-          <SettingsSwitch
+          <SettingsSelect label="Title source" value={settings.values.titleSource}
+            options={[{ label: "Existing title", value: "title" }, { label: "Recent conversation", value: "conversation" }]}
+            onValueChange={(value) => void settings.save({ ...settings.values, titleSource: value as "title" | "conversation" }, settings.revision)} />
+          {settings.values.titleSource === "title" ? <SettingsSwitch
             label="Long titles only"
             hint="Only titles over 40 characters. Turn off to include shorter titles."
             value={settings.values.titleLongOnly}
             onValueChange={(value) => void settings.save({ ...settings.values, titleLongOnly: value }, settings.revision)}
-          />
+          /> : null}
           <TitleModelPicker theme={theme} models={models} provider={settings.values.titleProvider} modelId={settings.values.titleModel}
             disabled={loadingModels} onSelect={(selected) => void settings.save({ ...settings.values,
               titleProvider: selected.provider, titleModel: selected.id, titleThinking: cheapestThinking(selected.thinkingOptions) }, settings.revision)} />
@@ -87,7 +90,9 @@ export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
             actionLabel="Reload models" disabled={loadingModels} onPress={() => void loadModels()} /> : null}
         </SettingsCard>
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>
-          Only shorter results are saved. Titles of four characters or fewer are skipped. Existing sessions are handled after their next completed turn, or with Shorten session title in the Command Center.
+          {settings.values.titleSource === "conversation"
+            ? "Reads up to 6 recent timeline items and sends at most 1,200 characters of user/assistant text to the selected model. Tool output and reasoning are excluded. Generates a task title even when the existing title is short."
+            : "Uses only the existing title. Only shorter results are saved; titles of four characters or fewer are skipped."}
         </Text>
         {!loadingModels && !supported ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>Requires Paseo 0.12 or later with background workspaces.</Text> : null}
       </SettingsSection>

@@ -44,14 +44,14 @@ export default function contribute(client: PluginClientContext) {
     },
   });
   const removeShorten = client.addCommandCenterItem({
-    id: "shorten-title", title: "Shorten session title", icon: "TextCursorInput",
+    id: "shorten-title", title: "Generate session title", icon: "TextCursorInput",
     keywords: ["title", "shorten", "rename"], context: "agent",
     async onSelect({ agent, rpc }) {
       try {
         const result = await rpc(shortenTitleRpc, { id: agent.id });
-        Alert.alert("Short title", result.message);
+        Alert.alert("Session title", result.message);
       } catch {
-        Alert.alert("Could not shorten title", "Check Short titles in Session triage settings, then try again when the session is idle.");
+        Alert.alert("Could not generate title", "Check Session titles in Session triage settings, then try again when the session is idle.");
       }
     },
   });
