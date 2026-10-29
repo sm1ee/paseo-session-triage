@@ -28,11 +28,11 @@ Pending permission requests come from Paseo. Requests found in chat are inferred
 Requires stable Paseo 0.11.4 or later. Install the tagged GitHub version:
 
 ```sh
-paseo plugin add git:sm1ee/paseo-session-triage --ref v0.2.1
+paseo plugin add git:sm1ee/paseo-session-triage --ref v0.2.2
 paseo plugin ls session-triage
 ```
 
-Open **Session triage** in the sidebar. To change the session limit or include subagents, open **Settings → Plugins → Session triage settings**.
+Open **Session triage** in the sidebar, then use **Settings** in its top-right toolbar to configure title shortening, title icons, and session limits. The same settings are also available under **Settings → Plugins → Session triage settings**.
 
 ## Short titles
 
