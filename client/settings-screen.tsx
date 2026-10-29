@@ -6,6 +6,7 @@ import { ScrollView, Text } from "react-native";
 import { triagePreferences } from "../shared/triage";
 import { cheapestThinking, shortTitleModelsRpc } from "../shared/short-titles";
 import type { z } from "zod";
+import { TitleModelPicker } from "./model-picker";
 
 export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
   const settings = useSettings(triagePreferences);
@@ -62,23 +63,9 @@ export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
             disabled={!supported && !settings.values.shortenTitles}
             onValueChange={(value) => void settings.save({ ...settings.values, shortenTitles: value }, settings.revision)}
           />
-          <SettingsSelect
-            label="Title model"
-            hint="Your selected model only. Small models cost less; provider overhead still applies."
-            disabled={loadingModels}
-            value={settings.values.titleProvider && settings.values.titleModel ? JSON.stringify([settings.values.titleProvider, settings.values.titleModel]) : ""}
-            options={[
-              { label: loadingModels ? "Loading models…" : "Choose a model", value: "" },
-              ...(!models.some(model => model.provider === settings.values.titleProvider && model.id === settings.values.titleModel) && settings.values.titleModel
-                ? [{ label: `${settings.values.titleProvider} · ${settings.values.titleModel} (unavailable)`, value: JSON.stringify([settings.values.titleProvider, settings.values.titleModel]) }] : []),
-              ...models.map(model => ({ label: model.label, value: JSON.stringify([model.provider, model.id]) })),
-            ]}
-            onValueChange={(value) => {
-              const selected = models.find(model => JSON.stringify([model.provider, model.id]) === value);
-              void settings.save({ ...settings.values, titleProvider: selected?.provider ?? "", titleModel: selected?.id ?? "",
-                titleThinking: cheapestThinking(selected?.thinkingOptions ?? []) }, settings.revision);
-            }}
-          />
+          <TitleModelPicker theme={theme} models={models} provider={settings.values.titleProvider} modelId={settings.values.titleModel}
+            disabled={loadingModels} onSelect={(selected) => void settings.save({ ...settings.values,
+              titleProvider: selected.provider, titleModel: selected.id, titleThinking: cheapestThinking(selected.thinkingOptions) }, settings.revision)} />
           {(() => {
             const selected = models.find(model => model.provider === settings.values.titleProvider && model.id === settings.values.titleModel);
             const options = selected?.thinkingOptions ?? [];

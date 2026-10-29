@@ -28,7 +28,7 @@ Pending permission requests come from Paseo. Requests found in chat are inferred
 Requires stable Paseo 0.11.4 or later. Install the tagged GitHub version:
 
 ```sh
-paseo plugin add git:sm1ee/paseo-session-triage --ref v0.2.0
+paseo plugin add git:sm1ee/paseo-session-triage --ref v0.2.1
 paseo plugin ls session-triage
 ```
 
@@ -37,6 +37,8 @@ Open **Session triage** in the sidebar. To change the session limit or include s
 ## Short titles
 
 Open **Session triage settings → Short titles**, choose a **Title model**, and turn on **Shorten long titles**. It is off by default. Models come from your enabled Claude, Codex, OpenCode, and OMP providers in Paseo; no separate API key is needed. Title shortening requires Paseo 0.12 or later with background workspace support; other triage features still support 0.11.4. For models with reasoning settings, the lowest advertised level is selected first and can be changed.
+
+The model picker has a searchable, scrolling list and Provider filters. It stays within the available screen space on mobile, including when the keyboard is open. Reasoning defaults to off/none when supported, then minimal, low, or the lowest remaining named level. A reasoning level you choose manually is respected.
 
 - Only top-level session titles longer than 40 characters are considered, excluding the status icon and folder prefix. Existing sessions are considered after their next completed turn; enabling the feature does not scan or rename your session history.
 - Use **Shorten session title** in the Command Center of an idle session to shorten an existing title now. The same toggle and request limits apply.
