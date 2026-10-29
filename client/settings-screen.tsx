@@ -7,6 +7,7 @@ import { triagePreferences } from "../shared/triage";
 import { cheapestThinking, shortTitleModelsRpc } from "../shared/short-titles";
 import type { z } from "zod";
 import { TitleModelPicker } from "./model-picker";
+import { TitleFrequency } from "./title-frequency";
 
 export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
   const settings = useSettings(triagePreferences);
@@ -58,14 +59,16 @@ export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
         <SettingsCard>
           <SettingsSwitch
             label="Generate titles"
-            hint="Once per session after a completed turn. Regenerate manually from the Command Center."
+            hint="Update from the selected source. Regenerate manually from the Command Center."
             value={settings.values.shortenTitles}
             disabled={!supported && !settings.values.shortenTitles}
             onValueChange={(value) => void settings.save({ ...settings.values, shortenTitles: value }, settings.revision)}
           />
           <SettingsSelect label="Title source" value={settings.values.titleSource}
-            options={[{ label: "Existing title", value: "title" }, { label: "Recent conversation", value: "conversation" }]}
+            options={[{ label: "Existing title", value: "title" }, { label: "Active goal or recent work", value: "conversation" }]}
             onValueChange={(value) => void settings.save({ ...settings.values, titleSource: value as "title" | "conversation" }, settings.revision)} />
+          {settings.values.titleSource === "conversation" ? <TitleFrequency theme={theme} value={settings.values.titleUpdateEvery}
+            onSave={value => void settings.save({ ...settings.values, titleUpdateEvery: value }, settings.revision)} /> : null}
           {settings.values.titleSource === "title" ? <SettingsSwitch
             label="Long titles only"
             hint="Only titles over 40 characters. Turn off to include shorter titles."
@@ -91,7 +94,7 @@ export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
         </SettingsCard>
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>
           {settings.values.titleSource === "conversation"
-            ? "Reads up to 6 recent timeline items and sends at most 1,200 characters of user/assistant text to the selected model. Tool output and reasoning are excluded. Generates a task title even when the existing title is short."
+            ? "Uses a verified running goal first (requires session-recovery), otherwise recent work. Sends up to 600 goal characters or 1,200 characters of recent messages. Daily limits apply. Turn counts restart after reloads or settings changes."
             : "Uses only the existing title. Only shorter results are saved; titles of four characters or fewer are skipped."}
         </Text>
         {!loadingModels && !supported ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>Requires Paseo 0.12 or later with background workspaces.</Text> : null}
