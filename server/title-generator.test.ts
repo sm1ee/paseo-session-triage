@@ -28,7 +28,7 @@ describe("별도 제목 생성 세션의 수명", () => {
     const f = fixture(); expect(await f.generator.generate(f.input)).toBe('{"title":"Short task title"}');
     expect(f.createAgent).toHaveBeenCalledOnce();
     const options = f.createAgent.mock.calls[0][0] as Parameters<DaemonClient["createAgent"]>[0];
-    expect(options.config).toMatchObject({ provider: "codex", model: "fixture-mini", mcpServers: {},
+    expect(options.config).toMatchObject({ provider: "codex", model: "fixture-mini", mcpServers: {}, internal: true,
       providerOptions: { sandbox_mode: "read-only", approval_policy: "never", web_search: "disabled" } });
     expect(f.sendAgentMessage).toHaveBeenCalledOnce(); expect(f.waitForFinish).toHaveBeenCalledWith(options.agentId, 30_000);
     expect(f.deleteAgent).toHaveBeenCalledExactlyOnceWith(options.agentId); await access(options.config!.cwd);

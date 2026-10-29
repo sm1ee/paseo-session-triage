@@ -6,6 +6,7 @@ import { triagePreferences } from "../shared/triage";
 import { titlePrompt, type TitleGeneration } from "./title-generator";
 import { TitleShortener, titleModels } from "./title-shortener";
 import type { ActiveTitleGoal } from "./title-goal";
+import { titleActivityRevision } from "./title-activity";
 
 const long = "Refactor the authentication middleware and fix session restoration after a daemon restart";
 const short = "Fix session restoration";
@@ -23,9 +24,12 @@ function fixture(overrides: Record<string, unknown> = {}) {
   const budget = { claim: vi.fn(async () => true) }, generate = vi.fn(async (_input: TitleGeneration) => JSON.stringify({ title: short }));
   const apply = vi.fn(async (_api, _id, _expected, _title, valid: () => boolean) => valid());
   const readGoal = vi.fn(async (): Promise<ActiveTitleGoal | null> => null);
-  service = new TitleShortener(settings, budget, generate, apply, Date.now, async () => true, readGoal);
+  const records = new Map<string, string>();
+  const activity = { has: vi.fn(async (id: string, revision: string) => records.get(id) === revision),
+    mark: vi.fn(async (id: string, revision: string) => { records.set(id, revision); }) };
+  service = new TitleShortener(settings, budget, generate, apply, Date.now, async () => true, readGoal, activity);
   const event = { id: agent.id, workspaceId: agent.workspaceId, parentAgentId: null, title: agent.title, provider: "codex", cwd: "/work" } as PluginHookAgent;
-  return { agent, event, api, entry, snapshot, settings, budget, generate, apply, timeline, list, send, readGoal,
+  return { agent, event, api, entry, snapshot, settings, budget, generate, apply, timeline, list, send, readGoal, activity, records,
     update: (patch: Record<string, unknown>) => { values = triagePreferences.schema.parse({ ...values, ...patch }); service.settingsChanged(); } };
 }
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-29T03:00:00Z")); });
@@ -317,4 +321,65 @@ describe("요약 입력과 결과", () => {
     expect(readShortTitle(response, long)).toBeNull();
   });
   it("40자를 초과한 결과를 거부한다", () => { expect(readShortTitle(JSON.stringify({ title: "x".repeat(41) }), long)).toBeNull(); });
+});
+
+describe("쉬는 세션의 중복 없는 제목 생성", () => {
+  it("옵션은 기본 OFF이며 꺼져 있으면 모델이나 대화를 읽지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation" });
+    expect(triagePreferences.schema.parse({}).titleIncludeIdle).toBe(false);
+    await service.onIdle(f.api, f.agent); await vi.advanceTimersByTimeAsync(120_000);
+    expect(f.generate).not.toHaveBeenCalled(); expect(f.timeline).not.toHaveBeenCalled(); expect(f.budget.claim).not.toHaveBeenCalled();
+  });
+  it("5턴이 쌓이지 않은 기존 세션도 한 번 생성하고 이름 및 아이콘 변경은 건너뛴다", async () => {
+    const f = fixture({ titleSource: "conversation", titleIncludeIdle: true });
+    await service.onIdle(f.api, f.agent); await vi.advanceTimersByTimeAsync(2000);
+    expect(f.generate).toHaveBeenCalledOnce(); expect(f.budget.claim).toHaveBeenCalledExactlyOnceWith("session", 5, true);
+    f.agent.title = "✅ New display name"; f.agent.updatedAt = new Date().toISOString();
+    await service.onIdle(f.api, f.agent); await vi.advanceTimersByTimeAsync(120_000);
+    expect(f.generate).toHaveBeenCalledOnce(); expect(f.timeline).toHaveBeenCalledOnce();
+    f.agent.lastUserMessageAt = new Date().toISOString();
+    await service.onIdle(f.api, f.agent); await vi.advanceTimersByTimeAsync(2000);
+    expect(f.generate).toHaveBeenCalledTimes(2);
+  });
+  it("기존 주기 또는 수동 호출로 처리한 대화는 쉬는 세션 스캔에서 다시 보내지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation", titleIncludeIdle: true });
+    await service.shorten(f.api, f.agent.id, [], true);
+    f.update({ titleDailyLimit: 10 });
+    await service.onIdle(f.api, f.agent); await vi.advanceTimersByTimeAsync(120_000);
+    expect(f.generate).toHaveBeenCalledOnce();
+  });
+  it("재로딩 뒤 기록이 있으면 처리하지 않고 예산 부족은 처리 완료로 기록하지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation", titleIncludeIdle: true });
+    f.records.set(f.agent.id, titleActivityRevision(f.agent));
+    await service.onIdle(f.api, f.agent); await vi.advanceTimersByTimeAsync(2000);
+    expect(f.generate).not.toHaveBeenCalled();
+    f.records.clear(); f.budget.claim.mockResolvedValue(false);
+    await service.onIdle(f.api, f.agent); await vi.advanceTimersByTimeAsync(2000);
+    expect(f.activity.mark).not.toHaveBeenCalled(); expect(f.generate).not.toHaveBeenCalled();
+  });
+  it("실패나 null 응답도 같은 대화로 자동 재시도하지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation", titleIncludeIdle: true });
+    f.generate.mockRejectedValueOnce(new Error("capacity"));
+    await service.onIdle(f.api, f.agent); await vi.advanceTimersByTimeAsync(2000);
+    await service.onIdle(f.api, f.agent); await vi.advanceTimersByTimeAsync(120_000);
+    expect(f.generate).toHaveBeenCalledOnce();
+    f.agent.lastUserMessageAt = new Date().toISOString(); f.generate.mockResolvedValue('{"title":null}');
+    await service.onIdle(f.api, f.agent); await vi.advanceTimersByTimeAsync(2000);
+    await service.onIdle(f.api, f.agent); await vi.advanceTimersByTimeAsync(120_000);
+    expect(f.generate).toHaveBeenCalledTimes(2);
+  });
+  it("대기 중 다시 사용하면 취소하고 실행 중 세션은 큐에 넣지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation", titleIncludeIdle: true });
+    await service.onIdle(f.api, f.agent); service.turnStarted(f.agent.id);
+    await vi.advanceTimersByTimeAsync(2000); expect(f.generate).not.toHaveBeenCalled();
+    f.agent.activeTurn = { turnId: "running", startedAt: null };
+    await service.onIdle(f.api, f.agent); await vi.advanceTimersByTimeAsync(120_000);
+    expect(f.generate).not.toHaveBeenCalled(); expect(f.budget.claim).not.toHaveBeenCalled();
+  });
+  it("큐에 넣은 뒤 상태가 바뀌면 예산과 대화를 읽기 전에 제외한다", async () => {
+    const f = fixture({ titleSource: "conversation", titleIncludeIdle: true });
+    await service.onIdle(f.api, f.agent); f.agent.activeTurn = { turnId: "running", startedAt: null };
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(f.generate).not.toHaveBeenCalled(); expect(f.budget.claim).not.toHaveBeenCalled(); expect(f.timeline).not.toHaveBeenCalled();
+  });
 });

@@ -69,6 +69,10 @@ export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
             onValueChange={(value) => void settings.save({ ...settings.values, titleSource: value as "title" | "conversation" }, settings.revision)} />
           {settings.values.titleSource === "conversation" ? <TitleFrequency theme={theme} value={settings.values.titleUpdateEvery}
             onSave={value => void settings.save({ ...settings.values, titleUpdateEvery: value }, settings.revision)} /> : null}
+          <SettingsSwitch label="Include idle sessions"
+            hint="Generate once from existing activity. Skip until new conversation activity. Uses the same daily limit."
+            value={settings.values.titleIncludeIdle}
+            onValueChange={value => void settings.save({ ...settings.values, titleIncludeIdle: value }, settings.revision)} />
           {settings.values.titleSource === "title" ? <SettingsSwitch
             label="Long titles only"
             hint="Only titles over 40 characters. Turn off to include shorter titles."
