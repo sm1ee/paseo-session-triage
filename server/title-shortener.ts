@@ -195,7 +195,8 @@ export class TitleShortener {
       }
       // Once reserved, failures and ambiguous deliveries remain spent. Never
       // retry automatically or switch to a different/billable model.
-      const response = await this.generate({ title: original, context, goal: goal?.objective, provider: model.provider, model: model.id, thinking, signal: abort.signal });
+      const response = await this.generate({ title: original, context, goal: goal?.objective, parentId: id,
+        provider: model.provider, model: model.id, thinking, signal: abort.signal });
       const title = readShortTitle(response, original, settings.titleSource);
       if (!title) return { changed: false, message: "No valid title change was returned. The original title was kept." };
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };

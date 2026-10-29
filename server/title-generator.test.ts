@@ -4,14 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DaemonTitleGenerator, titleAgentConfig, type TitleGeneration } from "./title-generator";
+import { AgentCreateRequestSchema } from "@getpaseo/protocol/messages";
 
 let directory: string;
 beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), "title-generator-test-")); });
 afterEach(async () => { await rm(directory, { recursive: true, force: true }); });
 function fixture() {
   const abort = new AbortController();
-  const input: TitleGeneration = { title: "A long example task title for a fake provider", provider: "codex", model: "fixture-mini", thinking: "low", signal: abort.signal };
-  const createAgent = vi.fn(async (options: { agentId?: string }) => ({ id: options.agentId }));
+  const input: TitleGeneration = { title: "A long example task title for a fake provider", parentId: "target-session", provider: "codex", model: "fixture-mini", thinking: "low", signal: abort.signal };
+  const createAgent = vi.fn(async (options: { agentId?: string; callerAgentId?: string }): Promise<{ id?: string; labels?: Record<string, string | undefined> }> => ({ id: options.agentId,
+    labels: { "paseo.parent-agent-id": options.callerAgentId, "session-triage.title-helper": "1" } }));
   const sendAgentMessage = vi.fn(async () => {}), deleteAgent = vi.fn(async () => {});
   const waitForFinish = vi.fn(async () => ({ status: "idle", lastMessage: '{"title":"Short task title"}' }));
   const supportsBackgroundWorkspaces = vi.fn(() => true);
@@ -28,8 +30,11 @@ describe("별도 제목 생성 세션의 수명", () => {
     const f = fixture(); expect(await f.generator.generate(f.input)).toBe('{"title":"Short task title"}');
     expect(f.createAgent).toHaveBeenCalledOnce();
     const options = f.createAgent.mock.calls[0][0] as Parameters<DaemonClient["createAgent"]>[0];
-    expect(options.config).toMatchObject({ provider: "codex", model: "fixture-mini", mcpServers: {}, internal: true,
+    expect(options.config).toMatchObject({ provider: "codex", model: "fixture-mini", mcpServers: {},
       providerOptions: { sandbox_mode: "read-only", approval_policy: "never", web_search: "disabled" } });
+    expect(options.callerAgentId).toBe(f.input.parentId);
+    const wire = AgentCreateRequestSchema.parse({ ...options, type: "agent.create.request", requestId: "fixture-request" });
+    expect(wire.callerAgentId).toBe(f.input.parentId);
     expect(f.sendAgentMessage).toHaveBeenCalledOnce(); expect(f.waitForFinish).toHaveBeenCalledWith(options.agentId, 30_000);
     expect(f.deleteAgent).toHaveBeenCalledExactlyOnceWith(options.agentId); await access(options.config!.cwd);
     expect(await readdir(options.config!.cwd)).toEqual([]);
@@ -74,6 +79,17 @@ describe("별도 제목 생성 세션의 수명", () => {
     const f = fixture(); f.deleteAgent.mockRejectedValue(new Error("private cleanup error"));
     await expect(f.generator.generate(f.input)).rejects.toThrow("cleanup failed");
     await expect(f.generator.generate(f.input)).rejects.toThrow("cleanup failed"); expect(f.createAgent).toHaveBeenCalledOnce();
+  });
+  it("하위 관계가 응답에서 확인되지 않으면 프롬프트 없이 자신이 만든 세션만 정리한다", async () => {
+    const f = fixture(); f.createAgent.mockImplementationOnce(async options => ({ id: options.agentId, labels: {} }));
+    await expect(f.generator.generate(f.input)).rejects.toThrow("not delegated");
+    expect(f.sendAgentMessage).not.toHaveBeenCalled(); expect(f.waitForFinish).not.toHaveBeenCalled();
+    expect(f.deleteAgent).toHaveBeenCalledOnce();
+  });
+  it("대상 세션 없이 알림이 발생하는 독립 보조 세션을 생성하지 않는다", async () => {
+    const f = fixture(); f.input.parentId = "";
+    await expect(f.generator.generate(f.input)).rejects.toThrow("target session");
+    expect(f.createWorkspace).not.toHaveBeenCalled(); expect(f.createAgent).not.toHaveBeenCalled();
   });
   it("지원하지 않는 Provider는 기본 모델로 대체하지 않는다", () => {
     const f = fixture(); expect(() => titleAgentConfig({ ...f.input, provider: "other" }, "/tmp")).toThrow("not supported");

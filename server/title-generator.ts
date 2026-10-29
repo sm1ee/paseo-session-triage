@@ -10,6 +10,7 @@ import type { TitleContextMessage } from "./title-context";
 export const TITLE_PROVIDERS = ["claude", "codex", "opencode", "omp"] as const;
 export interface TitleGeneration {
   title: string; provider: string; model: string; thinking: string; signal: AbortSignal;
+  parentId: string;
   context?: readonly TitleContextMessage[];
   goal?: string;
 }
@@ -23,7 +24,7 @@ export function titlePrompt(title: string, context?: readonly TitleContextMessag
 
 export function titleAgentConfig(input: TitleGeneration, cwd: string): AgentSessionConfig {
   const base: AgentSessionConfig = {
-    provider: input.provider, model: input.model, cwd, title: "Shorten title", internal: true,
+    provider: input.provider, model: input.model, cwd, title: "Shorten title",
     systemPrompt: "You write short task titles. No tools. Output one JSON object only.",
     mcpServers: {}, toolPolicy: { preapproved: [] },
     ...(input.thinking ? { thinkingOptionId: input.thinking } : {}),
@@ -69,6 +70,7 @@ export class DaemonTitleGenerator {
   }
   async generate(input: TitleGeneration): Promise<string> {
     if (this.cleanupFailed) throw new Error("Title cleanup failed. Reload the plugin before trying again.");
+    if (!input.parentId?.trim()) throw new Error("A title helper requires its target session.");
     input.signal.throwIfAborted();
     const driver = await this.connect();
     input.signal.throwIfAborted();
@@ -86,9 +88,15 @@ export class DaemonTitleGenerator {
       input.signal.throwIfAborted(); attempted = true;
       this.owned.add(id);
       while (this.owned.size > 20) this.owned.delete(this.owned.values().next().value!);
-      const agent = await driver.createAgent({ agentId: id, workspaceId, labels: { "session-triage.title-helper": "1" }, config: titleAgentConfig(input, this.directory) });
+      // Public config.internal is stripped from the wire in Paseo 0.13. Use
+      // daemon-owned child creation instead: delegated agents suppress attention
+      // pushes, and callerAgentId survives protocol serialization.
+      const agent = await driver.createAgent({ agentId: id, workspaceId, callerAgentId: input.parentId,
+        labels: { "session-triage.title-helper": "1" }, config: titleAgentConfig(input, this.directory) });
       if (agent.id !== id) throw new Error("Unexpected title agent identity.");
       created = true;
+      if (agent.labels?.["paseo.parent-agent-id"] !== input.parentId || agent.labels["session-triage.title-helper"] !== "1")
+        throw new Error("The title helper is not delegated. No title prompt was sent.");
       input.signal.throwIfAborted();
       await driver.sendAgentMessage(id, titlePrompt(input.title, input.context, input.goal));
       input.signal.throwIfAborted();
