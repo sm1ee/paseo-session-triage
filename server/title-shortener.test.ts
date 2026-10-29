@@ -269,6 +269,38 @@ describe("제목 요약의 호출 및 비용 제한", () => {
     service.onTurnEnd(f.api, f.event, [], "4"); await vi.advanceTimersByTimeAsync(2000);
     expect(f.generate).toHaveBeenCalledTimes(2);
   });
+  it("같은 네이티브 Goal의 다음 턴이 바로 실행돼도 중단 없이 제목을 생성한다", async () => {
+    const f = fixture({ titleSource: "conversation" });
+    f.readGoal.mockResolvedValue({ objective: "Fix mobile model selection", revision: "goal-v1" });
+    f.agent.activeTurn = { turnId: "goal-turn-1", startedAt: null };
+    let release!: (text: string) => void;
+    f.generate.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const pending = service.shorten(f.api, "session"); await vi.advanceTimersByTimeAsync(0);
+    expect(f.generate).toHaveBeenCalledOnce();
+    f.agent.activeTurn = { turnId: "goal-turn-2", startedAt: null }; service.turnStarted("session");
+    expect(f.generate.mock.calls[0][0].signal.aborted).toBe(false);
+    release(JSON.stringify({ title: short })); expect((await pending).changed).toBe(true);
+    expect(f.send).not.toHaveBeenCalled(); expect(f.timeline).not.toHaveBeenCalled();
+  });
+  it("다음 Goal 턴이 주기 처리 전에 시작되어도 예약된 작업을 잃지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation", titleUpdateEvery: 1 });
+    f.readGoal.mockResolvedValue({ objective: "Fix mobile model selection", revision: "goal-v1" });
+    service.onTurnEnd(f.api, f.event, [], "finished-goal-turn");
+    f.agent.activeTurn = { turnId: "next-goal-turn", startedAt: null }; service.turnStarted("session");
+    await vi.advanceTimersByTimeAsync(2000); expect(f.generate).toHaveBeenCalledOnce(); expect(f.apply).toHaveBeenCalledOnce();
+  });
+  it("Goal 없는 실행 중 대화에는 제목 생성 모델이나 본문 조회를 추가하지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation" }); f.agent.activeTurn = { turnId: "running", startedAt: null };
+    expect((await service.shorten(f.api, "session")).changed).toBe(false);
+    expect(f.generate).not.toHaveBeenCalled(); expect(f.timeline).not.toHaveBeenCalled();
+  });
+  it("대화 기반 생성 중 새 턴이 시작되면 해당 발췌 결과를 취소한다", async () => {
+    const f = fixture({ titleSource: "conversation" }); let release!: (text: string) => void;
+    f.generate.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const pending = service.shorten(f.api, "session"); await vi.advanceTimersByTimeAsync(0);
+    service.turnStarted("session"); expect(f.generate.mock.calls[0][0].signal.aborted).toBe(true);
+    release(JSON.stringify({ title: short })); expect((await pending).changed).toBe(false); expect(f.apply).not.toHaveBeenCalled();
+  });
 });
 
 describe("요약 입력과 결과", () => {

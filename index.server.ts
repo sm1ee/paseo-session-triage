@@ -33,7 +33,7 @@ export default function contribute(server: PluginServerContext) {
   const removeHooks = [
     server.on("agent.created", (event, { paseo }) => activity(paseo, event.agent.id, undefined, event.agent.parentAgentId)),
     server.on("agent.turn_started", (event, { paseo }) => {
-      shortener.forget(event.agent.id);
+      shortener.turnStarted(event.agent.id);
       activity(paseo, event.agent.id, undefined, event.agent.parentAgentId);
     }),
     server.on("agent.turn_ended", (event, { paseo }) => {

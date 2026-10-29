@@ -39,6 +39,7 @@ export class TitleShortener {
   private updateEvery?: number;
   private cadence = new TitleCadence();
   private activeId?: string;
+  private activeContext = false;
   private drained: Promise<void> = Promise.resolve();
   private lastError: string | null = null;
   constructor(private readonly settings: PluginSettings<typeof triagePreferences.schema>,
@@ -56,6 +57,13 @@ export class TitleShortener {
   forget(id: string, archived = false): void {
     this.queue.delete(id); if (this.activeId === id) this.controller?.abort();
     if (archived) this.cadence.forget(id);
+  }
+  turnStarted(id: string): void {
+    if (this.source === "title") { this.forget(id); return; }
+    // A native Goal may start its next turn immediately. Keep a due task-title
+    // job so it can verify that Goal without stopping the user's session.
+    const queued = this.queue.get(id); if (queued) queued.context = [];
+    if (this.activeId === id && this.activeContext) this.controller?.abort();
   }
   status(): string | null { return this.lastError; }
 
@@ -124,7 +132,7 @@ export class TitleShortener {
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };
       if (!agent || agent.archivedAt || !agent.workspaceId || agent.labels["paseo.parent-agent-id"] ||
           agent.labels["session-triage.title-helper"] === "1" || "internal" in agent && agent.internal) throw new Error("Choose an available top-level session.");
-      if (agent.activeTurn || agent.pendingPermissions.length || ["initializing", "error"].includes(agent.status))
+      if (agent.activeTurn && settings.titleSource === "title" || agent.pendingPermissions.length || ["initializing", "error"].includes(agent.status))
         return { changed: false, message: "Try again when this session is idle." };
       const original = agent.title || "";
       const lastUserMessageAt = agent.lastUserMessageAt;
@@ -146,6 +154,12 @@ export class TitleShortener {
       if (settings.titleSource === "conversation") {
         goal = await this.readGoal(id);
         if (!valid()) return { changed: false, message: "Title generation cancelled." };
+        if (!goal) {
+          const current = (await api.agents.ref(id).refresh())?.agent;
+          if (!valid() || !current || current.activeTurn || current.lastUserMessageAt !== lastUserMessageAt)
+            return { changed: false, message: "Try again when this session is idle." };
+          this.activeContext = true;
+        }
         context = goal ? undefined : eventContext;
         if (!goal && !context?.length) {
           const timeline = await api.agents.ref(id).timeline.refetch({ direction: "tail", projection: "canonical", limit: TITLE_CONTEXT_ITEMS });
@@ -166,14 +180,14 @@ export class TitleShortener {
         if (!valid() || currentGoal?.revision !== goal?.revision)
           return { changed: false, message: "The active goal changed. Its title was kept." };
         const latest = (await api.agents.ref(id).refresh())?.agent;
-        if (!valid() || !latest || latest.activeTurn || latest.lastUserMessageAt !== lastUserMessageAt)
+        if (!valid() || !latest || !goal && (latest.activeTurn || latest.lastUserMessageAt !== lastUserMessageAt))
           return { changed: false, message: "The session changed. Its title was kept." };
       }
       const changed = await this.apply(api, id, original, title, valid);
       return { changed, message: changed ? "Title updated." : "The session changed. Its title was kept." };
     } finally {
       clearTimeout(timeout); if (this.controller === abort) this.controller = undefined;
-      this.busy = false; this.activeId = undefined; finish(); this.schedule();
+      this.busy = false; this.activeId = undefined; this.activeContext = false; finish(); this.schedule();
     }
   }
 }
