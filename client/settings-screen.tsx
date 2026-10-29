@@ -64,6 +64,10 @@ export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
             disabled={!supported && !settings.values.shortenTitles}
             onValueChange={(value) => void settings.save({ ...settings.values, shortenTitles: value }, settings.revision)}
           />
+          <SettingsSwitch label="Name new sessions"
+            hint="Generate once when the first turn starts. Uses the selected source and daily limit."
+            value={settings.values.titleInitial}
+            onValueChange={value => void settings.save({ ...settings.values, titleInitial: value }, settings.revision)} />
           <SettingsSelect label="Title source" value={settings.values.titleSource}
             options={[{ label: "Existing title", value: "title" }, { label: "Active goal or recent work", value: "conversation" }]}
             onValueChange={(value) => void settings.save({ ...settings.values, titleSource: value as "title" | "conversation" }, settings.revision)} />
@@ -75,7 +79,7 @@ export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
             onValueChange={value => void settings.save({ ...settings.values, titleIncludeIdle: value }, settings.revision)} />
           {settings.values.titleSource === "title" ? <SettingsSwitch
             label="Long titles only"
-            hint="Only titles over 40 characters. Turn off to include shorter titles."
+            hint="For completed-turn and idle updates. Initial titles use any length."
             value={settings.values.titleLongOnly}
             onValueChange={(value) => void settings.save({ ...settings.values, titleLongOnly: value }, settings.revision)}
           /> : null}
@@ -99,7 +103,7 @@ export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>
           {settings.values.titleSource === "conversation"
             ? "Uses a verified running goal first (requires session-recovery), otherwise recent work. Sends up to 600 goal characters or 1,200 characters of recent messages. Daily limits apply. Turn counts restart after reloads or settings changes."
-            : "Uses only the existing title. Only shorter results are saved; titles of four characters or fewer are skipped."}
+            : "Uses only the existing title. Later updates must be shorter; initial titles can replace short names."}
         </Text>
         {!loadingModels && !supported ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>Requires Paseo 0.12 or later with background workspaces.</Text> : null}
       </SettingsSection>

@@ -10,6 +10,7 @@ export const triagePreferences = defineSettings({
     includeSubagents: z.boolean().default(false),
     maxSessions: z.number().int().min(10).max(100).default(20),
     shortenTitles: z.boolean().default(false),
+    titleInitial: z.boolean().default(true),
     titleLongOnly: z.boolean().default(true),
     titleSource: z.enum(["title", "conversation"]).default("title"),
     titleUpdateEvery: z.number().int().min(1).max(100).default(5),

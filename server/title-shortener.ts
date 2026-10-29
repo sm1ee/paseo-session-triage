@@ -1,7 +1,7 @@
 import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
 import type { PluginHookAgent } from "@getpaseo/plugin/server";
 import type { PluginSettings } from "@getpaseo/plugin/server";
-import { cheapestThinking, needsShortTitle, readShortTitle } from "../shared/short-titles";
+import { cheapestThinking, needsShortTitle, readShortTitle, titleParts } from "../shared/short-titles";
 import { triagePreferences } from "../shared/triage";
 import type { TitleBudget } from "./title-budget";
 import { TITLE_PROVIDERS, type GenerateTitle } from "./title-generator";
@@ -32,7 +32,7 @@ export class TitleShortener {
   private busy = false;
   private controller?: AbortController;
   private timer?: ReturnType<typeof setTimeout>;
-  private queue = new Map<string, { api: PaseoApi; agent: PluginHookAgent; context: TitleContextMessage[]; idle?: boolean }>();
+  private queue = new Map<string, { api: PaseoApi; agent: PluginHookAgent; context: TitleContextMessage[]; idle?: boolean; initial?: boolean }>();
   private preferences?: Promise<Preferences>;
   private lastAutomatic = Number.NEGATIVE_INFINITY;
   private enabled?: boolean;
@@ -43,6 +43,10 @@ export class TitleShortener {
   private activeId?: string;
   private activeContext = false;
   private activeIdle = false;
+  private activeInitial = false;
+  private created = new Set<string>();
+  private firstCompletions = new Set<string>();
+  private starting = new Set<string>();
   private drained: Promise<void> = Promise.resolve();
   private lastError: string | null = null;
   constructor(private readonly settings: PluginSettings<typeof triagePreferences.schema>,
@@ -54,22 +58,44 @@ export class TitleShortener {
 
   settingsChanged(): void {
     this.generation++; this.preferences = undefined; this.enabled = undefined; this.longOnly = undefined; this.source = undefined; this.queue.clear();
-    this.updateEvery = undefined; this.cadence.clear();
+    this.updateEvery = undefined; this.cadence.clear(); this.created.clear(); this.firstCompletions.clear(); this.starting.clear();
     clearTimeout(this.timer); this.timer = undefined; this.controller?.abort();
   }
   stop(): Promise<void> { this.stopped = true; this.settingsChanged(); return this.drained; }
   forget(id: string, archived = false): void {
-    this.queue.delete(id); if (this.activeId === id) this.controller?.abort();
-    if (archived) this.cadence.forget(id);
+    this.queue.delete(id); this.starting.delete(id); if (this.activeId === id) this.controller?.abort();
+    if (archived) { this.cadence.forget(id); this.created.delete(id); this.firstCompletions.delete(id); }
   }
   turnStarted(id: string): void {
-    if (this.queue.get(id)?.idle) this.queue.delete(id);
-    if (this.activeId === id && this.activeIdle) this.controller?.abort();
+    this.starting.delete(id);
+    if (this.queue.get(id)?.idle || this.queue.get(id)?.initial) this.queue.delete(id);
+    if (this.activeId === id && (this.activeIdle || this.activeInitial)) this.controller?.abort();
     if (this.source === "title") { this.forget(id); return; }
     // A native Goal may start its next turn immediately. Keep a due task-title
     // job so it can verify that Goal without stopping the user's session.
     const queued = this.queue.get(id); if (queued) queued.context = [];
     if (this.activeId === id && this.activeContext) this.controller?.abort();
+  }
+  onCreated(agent: PluginHookAgent): void {
+    if (this.stopped || this.enabled === false || agent.parentAgentId || !agent.workspaceId) return;
+    this.created.add(agent.id);
+    while (this.created.size > 1000) this.created.delete(this.created.values().next().value!);
+  }
+  async onFirstTurn(api: PaseoApi, agent: PluginHookAgent): Promise<void> {
+    if (!this.created.delete(agent.id) || this.stopped || this.enabled === false ||
+        agent.parentAgentId || !agent.workspaceId || this.queue.size >= 10) return;
+    const generation = this.generation;
+    this.starting.add(agent.id);
+    try {
+      const settings = await this.config();
+      if (!this.starting.has(agent.id) || this.stopped || generation !== this.generation ||
+          !settings.shortenTitles || !settings.titleInitial || this.queue.size >= 10) return;
+      if (this.cadence.count(agent.id) === 0) this.firstCompletions.add(agent.id);
+      while (this.firstCompletions.size > 1000) this.firstCompletions.delete(this.firstCompletions.values().next().value!);
+      this.cadence.reset(agent.id);
+      this.queue.set(agent.id, { api, agent, context: [], initial: true }); this.schedule();
+    } catch { this.lastError = "Could not load title settings."; }
+    finally { this.starting.delete(agent.id); }
   }
   status(): string | null { return this.lastError; }
 
@@ -87,6 +113,9 @@ export class TitleShortener {
   }
 
   onTurnEnd(api: PaseoApi, agent: PluginHookAgent, timeline: readonly AgentTimelineItem[] = [], turnId?: string | null): void {
+    // The first-turn job owns this completion, including failed/quota-blocked
+    // attempts. Subsequent successful turns start the normal update interval.
+    if (this.firstCompletions.delete(agent.id)) { this.cadence.complete(agent.id, turnId); this.cadence.reset(agent.id); return; }
     if (this.stopped || this.enabled === false || agent.parentAgentId || !agent.workspaceId ||
         this.source === "title" && !needsShortTitle(agent.title || "", this.longOnly ?? false)) return;
     if (!this.cadence.complete(agent.id, turnId)) return;
@@ -109,16 +138,17 @@ export class TitleShortener {
       const settings = await this.config();
       if (!settings.shortenTitles) { this.queue.clear(); return; }
       if (this.stopped || generation !== this.generation) return;
-      if (settings.titleSource === "title" && !needsShortTitle(work.agent.title || "", settings.titleLongOnly)) return;
+      if (work.initial && !settings.titleInitial) return;
+      if (!work.initial && settings.titleSource === "title" && !needsShortTitle(work.agent.title || "", settings.titleLongOnly)) return;
       if (work.idle && !settings.titleIncludeIdle) return;
-      if (settings.titleSource === "conversation" && !work.idle) {
+      if (settings.titleSource === "conversation" && !work.idle && !work.initial) {
         if (this.cadence.count(work.agent.id) < settings.titleUpdateEvery) return;
         // Failed/skipped attempts wait another full interval, never retrying the
         // same completion. Daily quotas persist independently across reloads.
         this.cadence.reset(work.agent.id);
       }
       this.lastAutomatic = this.now();
-      await this.shorten(work.api, work.agent.id, work.context, false, !!work.idle); this.lastError = null;
+      await this.shorten(work.api, work.agent.id, work.context, false, !!work.idle, !!work.initial, work.agent.title); this.lastError = null;
     } catch { this.lastError = "Could not generate a title. Check the title settings and session availability."; }
     finally { this.schedule(); }
   }
@@ -134,17 +164,18 @@ export class TitleShortener {
       return values;
     });
   }
-  async shorten(api: PaseoApi, id: string, eventContext: readonly TitleContextMessage[] = [], manual = false, idle = false): Promise<Result> {
+  async shorten(api: PaseoApi, id: string, eventContext: readonly TitleContextMessage[] = [], manual = false, idle = false, initial = false, initialTitle?: string | null): Promise<Result> {
     if (this.stopped) throw new Error("Title shortening has stopped.");
     if (this.busy) throw new Error("Another title is being shortened.");
     this.busy = true;
     let finish!: () => void;
     this.drained = new Promise(resolve => { finish = resolve; });
-    const generation = this.generation, abort = new AbortController(); this.controller = abort; this.activeId = id; this.activeIdle = idle;
+    const generation = this.generation, abort = new AbortController(); this.controller = abort; this.activeId = id; this.activeIdle = idle; this.activeInitial = initial;
     const valid = () => !this.stopped && !abort.signal.aborted && generation === this.generation;
     const timeout = setTimeout(() => abort.abort(), 45_000);
     try {
       const settings = await this.config();
+      if (initial && !settings.titleInitial) return { changed: false, message: "Initial titles are disabled." };
       if (!settings.shortenTitles) throw new Error("Turn on Generate titles in Settings first.");
       if (!settings.titleProvider || !settings.titleModel) throw new Error("Choose a title model in Settings first.");
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };
@@ -155,11 +186,13 @@ export class TitleShortener {
       const revision = titleActivityRevision(agent);
       if (idle && (!settings.titleIncludeIdle || !idleTitleCandidate(agent) || !this.activity || await this.activity.has(id, revision)))
         return { changed: false, message: "No new idle session activity." };
-      if (agent.activeTurn && settings.titleSource === "title" || agent.pendingPermissions.length || ["initializing", "error"].includes(agent.status))
+      if ((!initial && agent.activeTurn && settings.titleSource === "title") || agent.pendingPermissions.length || ["initializing", "error"].includes(agent.status))
         return { changed: false, message: "Try again when this session is idle." };
       const original = agent.title || "";
       const lastUserMessageAt = agent.lastUserMessageAt;
-      if (settings.titleSource === "title" && !needsShortTitle(original, settings.titleLongOnly)) return { changed: false, message: settings.titleLongOnly ? "Turn off Long titles only in Settings to include shorter titles." : "This title is already too short to shorten." };
+      if (initial && initialTitle && titleParts(initialTitle).body !== titleParts(original).body)
+        return { changed: false, message: "The initial title changed. Its title was kept." };
+      if (!initial && settings.titleSource === "title" && !needsShortTitle(original, settings.titleLongOnly)) return { changed: false, message: settings.titleLongOnly ? "Turn off Long titles only in Settings to include shorter titles." : "This title is already too short to shorten." };
       if (!await this.supported()) throw new Error("Title shortening requires Paseo 0.12 or later with background workspaces.");
       const { models } = await titleModels(api);
       const model = models.find(model => model.provider === settings.titleProvider && model.id === settings.titleModel);
@@ -167,7 +200,7 @@ export class TitleShortener {
       const thinking = settings.titleThinking || cheapestThinking(model.thinkingOptions);
       if (thinking && !model.thinkingOptions.some(option => option.id === thinking)) throw new Error("Choose a supported reasoning level in Settings.");
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };
-      const repeat = manual || idle || settings.titleSource === "conversation";
+      const repeat = !initial && (manual || idle || settings.titleSource === "conversation");
       const claimed = repeat ? await this.budget.claim(id, settings.titleDailyLimit, true) : await this.budget.claim(id, settings.titleDailyLimit);
       if (!claimed) return { changed: false, message: "Already attempted for this session, or the daily limit was reached." };
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };
@@ -180,7 +213,7 @@ export class TitleShortener {
         if (!valid()) return { changed: false, message: "Title generation cancelled." };
         if (!goal) {
           const current = (await api.agents.ref(id).refresh())?.agent;
-          if (!valid() || !current || current.activeTurn || current.lastUserMessageAt !== lastUserMessageAt)
+          if (!valid() || !current || (!initial && current.activeTurn) || current.lastUserMessageAt !== lastUserMessageAt)
             return { changed: false, message: "Try again when this session is idle." };
           this.activeContext = true;
         }
@@ -188,7 +221,12 @@ export class TitleShortener {
         if (!goal && !context?.length) {
           const timeline = await api.agents.ref(id).timeline.refetch({ direction: "tail", projection: "canonical", limit: TITLE_CONTEXT_ITEMS });
           if (timeline.error) throw new Error("Could not read recent messages. The title was kept.");
-          context = titleContext(timeline.entries.map(entry => entry.item));
+          const items = timeline.entries.map(entry => entry.item);
+          const firstUser = initial ? items.find(item => item.type === "user_message" && item.text.trim()) : undefined;
+          // On a fast first turn the user item may already be outside this
+          // bounded tail. Paseo's initial title is a bounded prompt fallback;
+          // never walk older pages to reconstruct it.
+          context = titleContext(initial ? firstUser ? [firstUser] : [{ type: "user_message", text: original }] : items);
         }
         if (!valid()) return { changed: false, message: "Title generation cancelled." };
         if (!goal && !context?.length) return { changed: false, message: "No recent task messages available. The title was kept." };
@@ -197,7 +235,7 @@ export class TitleShortener {
       // retry automatically or switch to a different/billable model.
       const response = await this.generate({ title: original, context, goal: goal?.objective, parentId: id,
         provider: model.provider, model: model.id, thinking, signal: abort.signal });
-      const title = readShortTitle(response, original, settings.titleSource);
+      const title = readShortTitle(response, original, initial ? "conversation" : settings.titleSource);
       if (!title) return { changed: false, message: "No valid title change was returned. The original title was kept." };
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };
       if (settings.titleSource === "conversation") {
@@ -205,14 +243,19 @@ export class TitleShortener {
         if (!valid() || currentGoal?.revision !== goal?.revision)
           return { changed: false, message: "The active goal changed. Its title was kept." };
         const latest = (await api.agents.ref(id).refresh())?.agent;
-        if (!valid() || !latest || !goal && (latest.activeTurn || latest.lastUserMessageAt !== lastUserMessageAt))
+        if (!valid() || !latest || !goal && ((!initial && latest.activeTurn) || latest.lastUserMessageAt !== lastUserMessageAt))
+          return { changed: false, message: "The session changed. Its title was kept." };
+      }
+      if (initial && settings.titleSource === "title") {
+        const latest = (await api.agents.ref(id).refresh())?.agent;
+        if (!valid() || !latest || latest.lastUserMessageAt !== lastUserMessageAt)
           return { changed: false, message: "The session changed. Its title was kept." };
       }
       const changed = await this.apply(api, id, original, title, valid);
       return { changed, message: changed ? "Title updated." : "The session changed. Its title was kept." };
     } finally {
       clearTimeout(timeout); if (this.controller === abort) this.controller = undefined;
-      this.busy = false; this.activeId = undefined; this.activeContext = false; this.activeIdle = false; finish(); this.schedule();
+      this.busy = false; this.activeId = undefined; this.activeContext = false; this.activeIdle = false; this.activeInitial = false; finish(); this.schedule();
     }
   }
 }

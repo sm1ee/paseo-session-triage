@@ -383,3 +383,114 @@ describe("쉬는 세션의 중복 없는 제목 생성", () => {
     expect(f.generate).not.toHaveBeenCalled(); expect(f.budget.claim).not.toHaveBeenCalled(); expect(f.timeline).not.toHaveBeenCalled();
   });
 });
+
+
+describe("새 세션의 첫 제목", () => {
+  async function start(f: ReturnType<typeof fixture>) {
+    service.onCreated(f.event); service.turnStarted(f.agent.id); await service.onFirstTurn(f.api, f.event);
+  }
+  it("첫 응답 완료 전 짧은 초기 제목을 선택 모델로 생성하고 대화에는 메시지를 보내지 않는다", async () => {
+    const f = fixture(); f.agent.title = "goal"; f.event.title = "goal";
+    f.agent.activeTurn = { turnId: "first", startedAt: null };
+    await start(f); expect(f.generate).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(f.generate).toHaveBeenCalledOnce(); expect(f.apply).toHaveBeenCalledOnce();
+    expect(f.budget.claim).toHaveBeenCalledExactlyOnceWith("session", 5);
+    expect(f.generate.mock.calls[0][0]).toMatchObject({ provider: "codex", model: "fixture-mini", thinking: "low" });
+    expect(f.timeline).not.toHaveBeenCalled(); expect(f.readGoal).not.toHaveBeenCalled();
+    expect(f.list).not.toHaveBeenCalled(); expect(f.send).not.toHaveBeenCalled();
+  });
+  it("첫 턴과 중복 완료 이벤트를 정기 갱신에 다시 쓰지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation", titleUpdateEvery: 1 });
+    await start(f); service.onTurnEnd(f.api, f.event, [], "first");
+    await vi.advanceTimersByTimeAsync(2000); expect(f.generate).toHaveBeenCalledOnce();
+    service.onTurnEnd(f.api, f.event, [], "first");
+    await vi.advanceTimersByTimeAsync(60_000); expect(f.generate).toHaveBeenCalledOnce();
+    service.turnStarted("session"); await service.onFirstTurn(f.api, f.event);
+    service.onTurnEnd(f.api, f.event, [], "second");
+    await vi.advanceTimersByTimeAsync(2000); expect(f.generate).toHaveBeenCalledTimes(2);
+  });
+  it("대화 소스는 실행 중 Goal을 우선 사용하고 메시지를 읽지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation" });
+    f.agent.activeTurn = { turnId: "first", startedAt: null };
+    f.readGoal.mockResolvedValue({ objective: "Fix mobile scrolling", revision: "goal-v1" });
+    await start(f); await vi.advanceTimersByTimeAsync(2000);
+    expect(f.generate.mock.calls[0][0].goal).toBe("Fix mobile scrolling");
+    expect(f.timeline).not.toHaveBeenCalled(); expect(f.apply).toHaveBeenCalledOnce();
+  });
+  it("Goal이 없으면 첫 사용자 메시지 하나만 600자로 제한하고 도구나 답변은 제외한다", async () => {
+    const f = fixture({ titleSource: "conversation" });
+    f.agent.activeTurn = { turnId: "first", startedAt: null };
+    f.timeline.mockResolvedValue({ error: null, entries: [
+      { item: { type: "user_message", text: "x".repeat(900) } },
+      { item: { type: "assistant_message", text: "Do not include this answer" } },
+    ] } as never);
+    await start(f); await vi.advanceTimersByTimeAsync(2000);
+    expect(f.timeline).toHaveBeenCalledExactlyOnceWith({ direction: "tail", projection: "canonical", limit: 6 });
+    expect(f.generate.mock.calls[0][0].context).toEqual([{ role: "user", text: "x".repeat(600) }]);
+    expect(f.apply).toHaveBeenCalledOnce();
+  });
+  it("빠른 첫 턴으로 메시지가 범위를 벗어나도 추가 페이지 대신 초기 제목만 쓴다", async () => {
+    const f = fixture({ titleSource: "conversation" });
+    await start(f); await vi.advanceTimersByTimeAsync(2000);
+    expect(f.timeline).toHaveBeenCalledOnce();
+    expect(f.generate.mock.calls[0][0].context).toEqual([{ role: "user", text: f.agent.title }]);
+  });
+  it.each([{ shortenTitles: false }, { titleInitial: false }])("꺼진 설정 %j에서는 첫 턴에 모델과 대화를 읽지 않는다", async values => {
+    const f = fixture(values); await start(f); await vi.advanceTimersByTimeAsync(2000);
+    expect(f.generate).not.toHaveBeenCalled(); expect(f.timeline).not.toHaveBeenCalled(); expect(f.budget.claim).not.toHaveBeenCalled();
+  });
+  it("초기 제목을 끄면 첫 완료 턴부터 기존 정기 갱신이 적용된다", async () => {
+    const f = fixture({ titleInitial: false, titleSource: "conversation", titleUpdateEvery: 1 });
+    await start(f); service.onTurnEnd(f.api, f.event, [], "first");
+    await vi.advanceTimersByTimeAsync(2000); expect(f.generate).toHaveBeenCalledOnce();
+  });
+  it("기존 세션과 하위 세션은 첫 턴 작업으로 등록하지 않는다", async () => {
+    const f = fixture(); await service.onFirstTurn(f.api, f.event);
+    service.onCreated({ ...f.event, parentAgentId: "parent" }); await service.onFirstTurn(f.api, f.event);
+    await vi.advanceTimersByTimeAsync(2000); expect(f.generate).not.toHaveBeenCalled(); expect(f.snapshot).not.toHaveBeenCalled();
+  });
+  it("일일 한도는 Goal 조회와 메시지 조회보다 먼저 확인하고 실패를 재시도하지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation" }); f.budget.claim.mockResolvedValue(false);
+    await start(f); await vi.advanceTimersByTimeAsync(2000);
+    service.onTurnEnd(f.api, f.event, [], "first");
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(f.budget.claim).toHaveBeenCalledOnce(); expect(f.readGoal).not.toHaveBeenCalled();
+    expect(f.timeline).not.toHaveBeenCalled(); expect(f.generate).not.toHaveBeenCalled();
+  });
+  it("대기 중 사용자가 제목을 바꾸면 생성하지 않는다", async () => {
+    const f = fixture(); await start(f); f.agent.title = "My own title";
+    await vi.advanceTimersByTimeAsync(2000); expect(f.generate).not.toHaveBeenCalled();
+  });
+  it("생성 중 새 턴이 시작되면 첫 제목 결과를 버린다", async () => {
+    const f = fixture(); let release!: (text: string) => void;
+    f.generate.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    await start(f); await vi.advanceTimersByTimeAsync(2000);
+    service.turnStarted("session"); expect(f.generate.mock.calls[0][0].signal.aborted).toBe(true);
+    release(JSON.stringify({ title: short })); await vi.advanceTimersByTimeAsync(0);
+    expect(f.apply).not.toHaveBeenCalled();
+  });
+  it("초기 작업도 다른 세션과 분당 한 번씩 직렬로 처리한다", async () => {
+    const f = fixture(); await start(f);
+    const next = { ...f.event, id: "next" }; service.onCreated(next); await service.onFirstTurn(f.api, next);
+    await vi.advanceTimersByTimeAsync(2000); expect(f.generate).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(60_000); expect(f.generate).toHaveBeenCalledTimes(2);
+  });
+  it("설정 읽기가 늦어 첫 턴이 먼저 끝나도 다음 턴을 누락하지 않는다", async () => {
+    const f = fixture({ titleSource: "conversation", titleUpdateEvery: 1 });
+    const ready = await f.settings.read(); let release!: () => void;
+    vi.spyOn(f.settings, "read").mockImplementationOnce(async () => { await new Promise<void>(resolve => { release = resolve; }); return ready; });
+    service.onCreated(f.event); const starting = service.onFirstTurn(f.api, f.event);
+    service.onTurnEnd(f.api, f.event, [], "first"); release(); await starting;
+    await vi.advanceTimersByTimeAsync(2000); expect(f.generate).toHaveBeenCalledOnce();
+    service.onTurnEnd(f.api, f.event, [], "second");
+    await vi.advanceTimersByTimeAsync(60_000); expect(f.generate).toHaveBeenCalledTimes(2);
+  });
+  it("초기 제목만 사용하는 경우에도 생성 중 새 메시지가 오면 결과를 버린다", async () => {
+    const f = fixture();
+    f.generate.mockImplementationOnce(async () => { f.agent.lastUserMessageAt = "2026-10-29T03:00:05Z"; return JSON.stringify({ title: short }); });
+    await start(f); await vi.advanceTimersByTimeAsync(2000);
+    expect(f.generate).toHaveBeenCalledOnce(); expect(f.apply).not.toHaveBeenCalled();
+  });
+
+});
