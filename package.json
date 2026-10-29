@@ -1,7 +1,7 @@
 {
   "name": "session-triage",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "See which Paseo sessions need your input, are still working, or are done.",
   "files": [
     "paseo-plugin.json",
