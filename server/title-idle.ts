@@ -5,7 +5,7 @@ import { triagePreferences } from "../shared/triage";
 export function idleTitleCandidate(agent: PaseoAgent): boolean {
   return !!agent.workspaceId && !agent.archivedAt && !agent.activeTurn &&
     !["initializing", "error"].includes(agent.status) && !agent.pendingPermissions.length &&
-    !agent.internal && !agent.labels["paseo.parent-agent-id"] && agent.labels["session-triage.title-helper"] !== "1";
+    !("internal" in agent && agent.internal) && !agent.labels["paseo.parent-agent-id"] && agent.labels["session-triage.title-helper"] !== "1";
 }
 
 // One metadata page per 15 minutes, with a cursor for older sessions. No history

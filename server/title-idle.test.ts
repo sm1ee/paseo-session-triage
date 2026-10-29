@@ -35,7 +35,7 @@ describe("쉬는 세션의 제한된 메타데이터 탐색", () => {
     if (kind === "running") f.agent.activeTurn = { turnId: "turn", startedAt: null };
     if (kind === "permission") f.agent.pendingPermissions = [{}] as PaseoAgent["pendingPermissions"];
     if (kind === "error") f.agent.status = "error";
-    if (kind === "internal") f.agent.internal = true;
+    if (kind === "internal") Object.assign(f.agent, { internal: true });
     if (kind === "archived") f.agent.archivedAt = new Date().toISOString();
     if (kind === "subagent") f.agent.labels["paseo.parent-agent-id"] = "parent";
     if (kind === "helper") f.agent.labels["session-triage.title-helper"] = "1";
