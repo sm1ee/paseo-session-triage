@@ -59,6 +59,11 @@ export class TriageService {
   }
   settingsChanged(): void { this.invalidate(); this.titles?.settingsChanged(); }
   stop(): void { this.stopped = true; this.titles?.stop(); }
+  async shortenTitle(api: PaseoApi, id: string, expected: string, title: string, valid: () => boolean): Promise<boolean> {
+    const changed = await this.titles?.shorten(api, id, expected, title, valid) ?? false;
+    if (changed) { this.invalidate(id); this.inspected.delete(id); }
+    return changed;
+  }
   async snapshot(api: PaseoApi, refresh: boolean): Promise<Snapshot> {
     if (this.stopped) return this.snapshotValue;
     const previous = this.snapshotValue.checkedAt ? Date.parse(this.snapshotValue.checkedAt) : 0;
@@ -85,6 +90,7 @@ export class TriageService {
           sort: [{ key: "updated_at", direction: "desc" }],
           page: { limit: Math.min(100, settings.maxSessions * 2), ...(cursor ? { cursor } : {}) }, signal: abort.signal });
         for (const { agent } of result.entries) {
+          if (agent.labels["session-triage.title-helper"] === "1") continue;
           if (!settings.includeSubagents && agent.labels["paseo.parent-agent-id"]) continue;
           agents.push(agent); if (agents.length >= settings.maxSessions) break;
         }

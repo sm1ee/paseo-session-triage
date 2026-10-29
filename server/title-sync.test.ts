@@ -23,6 +23,25 @@ beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { sync?.stop(); vi.useRealTimers(); });
 
 describe("이벤트 기반 제목 아이콘 갱신", () => {
+  it("요약 결과가 준비되는 동안 바뀐 사용자 제목은 보존한다", async () => {
+    const f = fixture(); f.agent.title = "User renamed this session";
+    expect(await sync.shorten(f.api, f.agent.id, "Original long title", "Short task", () => true)).toBe(false);
+    expect(f.rename).not.toHaveBeenCalled(); expect(f.workspaceRename).not.toHaveBeenCalled();
+  });
+  it("요약은 현재 상태 아이콘과 폴더를 보존하고 별도로 이름붙인 워크스페이스를 건드리지 않는다", async () => {
+    const f = fixture(false); f.agent.title = "❓ 〖work〗Original long title"; f.workspace.title = "Personal workspace";
+    expect(await sync.shorten(f.api, f.agent.id, "⏳ 〖work〗Original long title", "Short task", () => true)).toBe(true);
+    expect(f.rename).toHaveBeenCalledExactlyOnceWith(f.agent.id, "❓ 〖work〗Short task"); expect(f.workspaceRename).not.toHaveBeenCalled();
+  });
+  it("기존 세션 제목과 일치하는 워크스페이스 이름만 함께 줄인다", async () => {
+    const f = fixture(); f.agent.title = "⏳ 〖work〗Original long title"; f.workspace.title = "❓ Original long title";
+    expect(await sync.shorten(f.api, f.agent.id, f.agent.title, "Short task", () => true)).toBe(true);
+    expect(f.workspaceRename).toHaveBeenCalledExactlyOnceWith("❓ Short task");
+  });
+  it("설정 변경이나 종료로 취소된 요약은 제목을 쓰지 않는다", async () => {
+    const f = fixture(); expect(await sync.shorten(f.api, f.agent.id, f.agent.title!, "Short task", () => false)).toBe(false);
+    expect(f.refresh).not.toHaveBeenCalled(); expect(f.rename).not.toHaveBeenCalled();
+  });
   it("오래된 🟠를 실제 실행 턴의 ⏳로 바꾸며 전체 목록이나 본문을 조회하지 않는다", async () => {
     const f = fixture(); sync.request(f.api, f.agent.id);
     expect(f.rename).not.toHaveBeenCalled(); await vi.advanceTimersByTimeAsync(300);

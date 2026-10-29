@@ -168,6 +168,9 @@ export function TriageScreen({ theme, layout, navigation }: PluginScreenProps) {
           Could not rename: {error}
         </Text>
       ))}
+      {query.data?.shortTitleError ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+        {query.data.shortTitleError}
+      </Text> : null}
 
       {TRIAGE_ORDER.filter((state) => filter === null || filter === state).map((state) => {
         const section = rows.filter((row) => row.state === state);

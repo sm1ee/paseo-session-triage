@@ -28,11 +28,25 @@ Pending permission requests come from Paseo. Requests found in chat are inferred
 Requires stable Paseo 0.11.4 or later. Install the tagged GitHub version:
 
 ```sh
-paseo plugin add git:sm1ee/paseo-session-triage --ref v0.1.12
+paseo plugin add git:sm1ee/paseo-session-triage --ref v0.2.0
 paseo plugin ls session-triage
 ```
 
 Open **Session triage** in the sidebar. To change the session limit or include subagents, open **Settings → Plugins → Session triage settings**.
+
+## Short titles
+
+Open **Session triage settings → Short titles**, choose a **Title model**, and turn on **Shorten long titles**. It is off by default. Models come from your enabled Claude, Codex, OpenCode, and OMP providers in Paseo; no separate API key is needed. Title shortening requires Paseo 0.12 or later with background workspace support; other triage features still support 0.11.4. For models with reasoning settings, the lowest advertised level is selected first and can be changed.
+
+- Only top-level session titles longer than 40 characters are considered, excluding the status icon and folder prefix. Existing sessions are considered after their next completed turn; enabling the feature does not scan or rename your session history.
+- Use **Shorten session title** in the Command Center of an idle session to shorten an existing title now. The same toggle and request limits apply.
+- A session gets at most one model attempt, including failed or cancelled attempts. Records survive plugin reloads. The default daily cap is **5 requests**, adjustable from 1 to 50; the day resets at midnight UTC. This is a request cap, not a monetary budget.
+- Only the title is sent, capped at 320 Unicode characters. The plugin does not load conversation history or attach files. It asks the helper to return only a title. Provider instructions, tool definitions, and runtime overhead can still add tokens; a provider-backed agent costs more than a bare text-completion request. Pick a small model if cost matters.
+- The selected model is used without automatic retries or fallback models. Automatic jobs run one at a time, at most once per minute. Invalid results keep the original title.
+- A dedicated background workspace with an empty context directory is reused for title requests. Each request creates one helper session with restricted provider settings and removes that session afterward. The empty background workspace remains available for reuse. It does not send messages to, resume, pause, or interrupt your existing sessions or goals. Turning the feature off cancels the helper and discards late results.
+- Status icons and folder prefixes are preserved. If you rename the session while its title is being generated, that new name is kept. A matching workspace title is shortened with it; independently named workspaces are left alone.
+
+Paseo 0.13 already generates titles for new **workspaces** and lets you select its model under **Settings → Host → Metadata** ([Paseo documentation](https://paseo.sh/docs/metadata-generation)). That setting also covers branch, commit, and pull request metadata. This plugin's toggle controls only session-title shortening; it does not disable Paseo's own metadata generation.
 
 The sidebar shortcut is hidden in the iOS and Android apps. Use **Open session triage** in the Command Center to open it there.
 
@@ -62,7 +76,7 @@ The manifest declares only `>=0.11.4`, without a minor-version upper bound. Comp
 - **Update title icons** restores automatic session and workspace markers when enabled. It updates the affected session after a start, end, permission, or close event. Existing settings are respected. The initial bounded metadata scan also repairs old markers.
 - Title updates run one at a time, at most once per 300 ms. Repeated events are merged, matching titles are skipped, and failures back off for one minute. One local authenticated connection handles agent names, without starting a CLI for each change.
 - On Paseo 0.11 and 0.12, completed-turn events include recent messages. Triage uses up to 20 of those items without refetching a timeline. Paseo 0.13 sends an empty timeline, so the icon follows session metadata until you choose **Check reply**. The plugin does not add a background conversation fetch to replace the removed event data.
-- The plugin cannot send messages, approve requests, stop agents, delete sessions, or archive them. It does not send conversation text to another model or external service. It keeps short excerpts in memory and settings in Paseo's host settings store.
+- The plugin does not send messages to, approve requests for, stop, delete, or archive your existing sessions. Optional title shortening creates and removes only its own helper sessions in a dedicated background workspace. It never sends conversation text to another model. Short reply excerpts stay in memory; settings use Paseo's host settings store, and content-free title-attempt records are stored under `$PASEO_HOME/plugin-data/session-triage/title-attempts`.
 
 ## Paseo plugin catalog
 
