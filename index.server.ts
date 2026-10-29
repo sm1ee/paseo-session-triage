@@ -10,13 +10,15 @@ import { titleGoalReader } from "./server/title-goal";
 import { createPaseoApi } from "@getpaseo/client";
 import { FileTitleActivity } from "./server/title-activity";
 import { IdleTitleScanner } from "./server/title-idle";
+import { FileTriageEvidence } from "./server/triage-evidence";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 export default function contribute(server: PluginServerContext) {
   const settings = server.registerSettings(triagePreferences);
   const writer = new TitleWriter();
-  const service = new TriageService(settings, Date.now, (id, title) => writer.rename(id, title));
+  const service = new TriageService(settings, Date.now, (id, title) => writer.rename(id, title),
+    new FileTriageEvidence(join(process.env.PASEO_HOME || join(homedir(), ".paseo"), "plugin-data", "session-triage", "reply-classification")));
   const generator = new DaemonTitleGenerator(() => writer.client());
   const budget = new FileTitleBudget(join(process.env.PASEO_HOME || join(homedir(), ".paseo"), "plugin-data", "session-triage", "title-attempts"));
   const shortener = new TitleShortener(settings, budget, input => generator.generate(input),
@@ -28,10 +30,10 @@ export default function contribute(server: PluginServerContext) {
   server.handle(shortenTitleRpc, ({ id }, { paseo }) => shortener.shorten(paseo, id, [], true));
   server.handle(triageSnapshotRpc, async ({ refresh }, { paseo }) => {
     const snapshot = await service.snapshot(paseo, refresh);
-    return { ...snapshot, shortTitleError: shortener.status() };
+    return { ...snapshot, shortTitleError: shortener.status(), checkingReplies: service.checkingReplies() };
   });
 
-  server.handle(triageInspectRpc, ({ id }, { paseo }) => service.inspect(paseo, id));
+  server.handle(triageInspectRpc, async ({ id }, { paseo }) => ({ ...await service.inspect(paseo, id), checkingReplies: service.checkingReplies() }));
   const activity = (...args: Parameters<TriageService["activity"]>) => {
     if (!generator.owns(args[1])) service.activity(...args);
   };
@@ -49,7 +51,7 @@ export default function contribute(server: PluginServerContext) {
     }),
     server.on("agent.permission_requested", (event, { paseo }) => activity(paseo, event.agent.id, undefined, event.agent.parentAgentId)),
     server.on("agent.permission_resolved", (event, { paseo }) => activity(paseo, event.agent.id, undefined, event.agent.parentAgentId)),
-    server.on("agent.closed", (event, { paseo }) => activity(paseo, event.agent.id, undefined, event.agent.parentAgentId)),
+    server.on("agent.closed", (event, { paseo }) => activity(paseo, event.agent.id, undefined, event.agent.parentAgentId, true)),
     server.on("agent.archived", (event) => { service.archived(event.agent.id); shortener.forget(event.agent.id, true); }),
   ];
   const removeSettings = settings.subscribe(() => { service.settingsChanged(); shortener.settingsChanged(); idleTitles.wake(); });

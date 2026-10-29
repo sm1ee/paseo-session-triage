@@ -60,6 +60,7 @@ export const triageSnapshotRpc = defineRpc({
     error: z.string().nullable(),
     renameErrors: z.array(z.string()),
     shortTitleError: z.string().nullable().optional(),
+    checkingReplies: z.boolean().optional(),
   }),
 });
 
@@ -98,7 +99,7 @@ export const TRIAGE_DISPLAY: Record<TriageState, { emoji: string; label: string;
     label: "Working",
     description: "The agent is running a turn or starting up.",
   },
-  idle: { emoji: "○", label: "Idle", description: "No active turn. Check a reply to classify it." },
+  idle: { emoji: "○", label: "Idle", description: "No active turn. Recent replies are checked automatically." },
   done: {
     emoji: "✅",
     label: "Done",

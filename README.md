@@ -18,7 +18,7 @@ Session titles, paths, and message text are redacted in this screenshot.
 | 🟠 | Needs review | The work is unfinished, or the latest update is unclear. |
 | 👀 | Waiting on a result | The agent appears to be waiting for CI, a build, a deployment, or a review. |
 | ⏳ | Working | The agent is running a turn or starting up. |
-| ○ | Idle | No active turn. Use Check reply to classify the latest response. |
+| ○ | Idle | No active turn. The latest reply has not been classified yet. |
 | ✅ | Done | The latest reply says the work is done. Check the result yourself. |
 
 Pending permission requests come from Paseo. Requests found in chat are inferred from the wording. A ✅ label does not verify that a build, test, deployment, or submission succeeded.
@@ -28,7 +28,7 @@ Pending permission requests come from Paseo. Requests found in chat are inferred
 Requires stable Paseo 0.11.4 or later. Install the tagged GitHub version:
 
 ```sh
-paseo plugin add git:sm1ee/paseo-session-triage --ref v0.4.2
+paseo plugin add git:sm1ee/paseo-session-triage --ref v0.4.3
 paseo plugin ls session-triage
 ```
 
@@ -74,11 +74,11 @@ The manifest declares only `>=0.11.4`, without a minor-version upper bound. Comp
 
 - The default view shows up to 20 recent top-level sessions. You can include subagents or raise the limit in Settings.
 - The screen and sidebar check metadata every two minutes while open. Scans share an in-flight request, debounce events, and back off after failures.
-- Automatic checks read metadata only. Idle sessions stay unclassified until you choose **Check reply**. That action reads up to 20 recent timeline items from one idle session. Results stay in memory while its metadata is unchanged.
+- Lists read metadata first. A separate automatic queue classifies idle sessions from one page of up to 20 recent timeline items, one session at a time with a three-second gap after each check. Existing event messages are reused when available. New turns, pending permissions, errors, archived sessions, excluded subagents, and title helpers are skipped. No model call is used for classification. **Check reply** explicitly rechecks one session.
 - Chat-based labels are rules of thumb. Unclear replies and failed timeline reads show 🟠.
 - **Update title icons** restores automatic session and workspace markers when enabled. It updates the affected session after a start, end, permission, or close event. Existing settings are respected. The initial bounded metadata scan also repairs old markers.
 - Title updates run one at a time, at most once per 300 ms. Repeated events are merged, matching titles are skipped, and failures back off for one minute. One local authenticated connection handles agent names, without starting a CLI for each change.
-- On Paseo 0.11 and 0.12, completed-turn events include recent messages. Triage uses up to 20 of those items without refetching a timeline. Paseo 0.13 sends an empty timeline, so the icon follows session metadata until you choose **Check reply**. Icon updates do not fetch conversation history. Opt-in task-title generation separately reads at most 6 recent items after reserving its request budget.
+- On Paseo 0.11 and 0.12, completed-turn messages are reused without refetching. Paseo 0.13 sends an empty timeline; the serial reply queue fetches one bounded recent page instead. The classification is reused until conversation activity changes. Renames, icon updates, and idle/closed runtime transitions do not trigger another read. Failed or empty replies are marked for review without automatic retries for the same activity; use Check reply to retry. A content-free activity hash and classification enums persist across plugin reloads. Reply excerpts are never stored by this cache. Unrelated session events do not discard a valid result; changes to the same session do. While the queue drains, an open dashboard refreshes its cached results every five seconds, then returns to its normal two-minute interval. Opt-in task-title generation remains separate and uses its own daily budget.
 - The plugin does not send messages to, approve requests for, stop, delete, or archive your existing sessions. Optional title generation creates and removes only its own helper sessions in a dedicated background workspace. Active goal or recent work sends a bounded active goal objective or recent excerpts to the selected title model; Existing title mode sends no conversation content. Excerpts stay in plugin memory; settings use Paseo's host settings store, and content-free title-attempt and activity-hash records are stored under `$PASEO_HOME/plugin-data/session-triage/`.
 
 ## Paseo plugin catalog

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { TRIAGE_DISPLAY, TRIAGE_ORDER, TRIAGE_TITLE_PREFIX, triageSnapshotRpc, triageInspectRpc, type TriageRow, type TriageState } from "../shared/triage";
 
-const QUERY_KEY = ["session-triage", "snapshot", 4] as const;
+const QUERY_KEY = ["session-triage", "snapshot", 5] as const;
 
 function TriageSessionRow({ row, theme, compact, onOpen, onInspect, inspecting, checking, last }: {
   row: TriageRow;
@@ -60,7 +60,7 @@ export function TriageScreen({ theme, layout, navigation, onOpenSettings }: Plug
   const query = useQuery({
     queryKey: QUERY_KEY,
     queryFn: () => fetchSnapshot({ refresh: false }),
-    refetchInterval: 120_000,
+    refetchInterval: query => query.state.data?.checkingReplies ? 5000 : 120_000,
     staleTime: 30_000,
     retry: false,
   });
@@ -103,7 +103,7 @@ export function TriageScreen({ theme, layout, navigation, onOpenSettings }: Plug
             Session triage
           </Text>
           <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, marginTop: 4 }}>
-            {checked ? `${rows.length} sessions · Checked ${checked}` : "Checking sessions…"}
+            {query.data?.checkingReplies ? `${rows.length} sessions · Checking replies…` : checked ? `${rows.length} sessions · Checked ${checked}` : "Checking sessions…"}
           </Text>
         </View>
         <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
