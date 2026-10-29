@@ -30,6 +30,7 @@ export class TitleShortener {
   private preferences?: Promise<Preferences>;
   private lastAutomatic = Number.NEGATIVE_INFINITY;
   private enabled?: boolean;
+  private longOnly?: boolean;
   private activeId?: string;
   private drained: Promise<void> = Promise.resolve();
   private lastError: string | null = null;
@@ -39,7 +40,7 @@ export class TitleShortener {
     private readonly supported: () => Promise<boolean> = async () => true) {}
 
   settingsChanged(): void {
-    this.generation++; this.preferences = undefined; this.enabled = undefined; this.queue.clear();
+    this.generation++; this.preferences = undefined; this.enabled = undefined; this.longOnly = undefined; this.queue.clear();
     clearTimeout(this.timer); this.timer = undefined; this.controller?.abort();
   }
   stop(): Promise<void> { this.stopped = true; this.settingsChanged(); return this.drained; }
@@ -47,7 +48,7 @@ export class TitleShortener {
   status(): string | null { return this.lastError; }
 
   onTurnEnd(api: PaseoApi, agent: PluginHookAgent): void {
-    if (this.stopped || this.enabled === false || agent.parentAgentId || !agent.workspaceId || !needsShortTitle(agent.title || "")) return;
+    if (this.stopped || this.enabled === false || agent.parentAgentId || !agent.workspaceId || !needsShortTitle(agent.title || "", this.longOnly ?? false)) return;
     // Metadata from the event is enough to queue candidates. No listing,
     // conversation read, or model discovery happens in a lifecycle handler.
     if (this.queue.size >= 10 && !this.queue.has(agent.id)) return;
@@ -63,8 +64,10 @@ export class TitleShortener {
     const generation = this.generation;
     this.queue.delete(work.agent.id);
     try {
-      if (!(await this.config()).shortenTitles) { this.queue.clear(); return; }
+      const settings = await this.config();
+      if (!settings.shortenTitles) { this.queue.clear(); return; }
       if (this.stopped || generation !== this.generation) return;
+      if (!needsShortTitle(work.agent.title || "", settings.titleLongOnly)) return;
       this.lastAutomatic = this.now();
       await this.shorten(work.api, work.agent.id); this.lastError = null;
     } catch { this.lastError = "Could not shorten a title. Check the selected model in Settings."; }
@@ -75,7 +78,7 @@ export class TitleShortener {
     return this.preferences ??= this.settings.read().then(state => {
       if (state.status !== "ready") throw new Error("Title settings are unavailable.");
       const values = triagePreferences.schema.parse(state.values);
-      if (generation === this.generation) this.enabled = values.shortenTitles;
+      if (generation === this.generation) { this.enabled = values.shortenTitles; this.longOnly = values.titleLongOnly; }
       return values;
     });
   }
@@ -90,7 +93,7 @@ export class TitleShortener {
     const timeout = setTimeout(() => abort.abort(), 45_000);
     try {
       const settings = await this.config();
-      if (!settings.shortenTitles) throw new Error("Turn on Shorten long titles in Settings first.");
+      if (!settings.shortenTitles) throw new Error("Turn on Shorten titles in Settings first.");
       if (!settings.titleProvider || !settings.titleModel) throw new Error("Choose a title model in Settings first.");
       if (!valid()) return { changed: false, message: "Title shortening cancelled." };
       const agent = (await api.agents.ref(id).refresh())?.agent;
@@ -100,7 +103,7 @@ export class TitleShortener {
       if (agent.activeTurn || agent.pendingPermissions.length || ["initializing", "error"].includes(agent.status))
         return { changed: false, message: "Try again when this session is idle." };
       const original = agent.title || "";
-      if (!needsShortTitle(original)) return { changed: false, message: "This title is already short." };
+      if (!needsShortTitle(original, settings.titleLongOnly)) return { changed: false, message: settings.titleLongOnly ? "Turn off Long titles only in Settings to include shorter titles." : "This title is already too short to shorten." };
       if (!await this.supported()) throw new Error("Title shortening requires Paseo 0.12 or later with background workspaces.");
       const { models } = await titleModels(api);
       const model = models.find(model => model.provider === settings.titleProvider && model.id === settings.titleModel);

@@ -57,11 +57,17 @@ export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
       <SettingsSection title="Short titles">
         <SettingsCard>
           <SettingsSwitch
-            label="Shorten long titles"
+            label="Shorten titles"
             hint="Once per session after a completed turn. Uses only the title, never the conversation."
             value={settings.values.shortenTitles}
             disabled={!supported && !settings.values.shortenTitles}
             onValueChange={(value) => void settings.save({ ...settings.values, shortenTitles: value }, settings.revision)}
+          />
+          <SettingsSwitch
+            label="Long titles only"
+            hint="Only titles over 40 characters. Turn off to include shorter titles."
+            value={settings.values.titleLongOnly}
+            onValueChange={(value) => void settings.save({ ...settings.values, titleLongOnly: value }, settings.revision)}
           />
           <TitleModelPicker theme={theme} models={models} provider={settings.values.titleProvider} modelId={settings.values.titleModel}
             disabled={loadingModels} onSelect={(selected) => void settings.save({ ...settings.values,
@@ -81,7 +87,7 @@ export function TriageSettingsScreen({ theme }: PluginSurfaceProps) {
             actionLabel="Reload models" disabled={loadingModels} onPress={() => void loadModels()} /> : null}
         </SettingsCard>
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>
-          Titles over 40 characters are shortened. Existing sessions are handled after their next completed turn, or with Shorten session title in the Command Center. Paseo's built-in workspace naming is separate.
+          Only shorter results are saved. Titles of four characters or fewer are skipped. Existing sessions are handled after their next completed turn, or with Shorten session title in the Command Center.
         </Text>
         {!loadingModels && !supported ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>Requires Paseo 0.12 or later with background workspaces.</Text> : null}
       </SettingsSection>

@@ -63,6 +63,44 @@ describe("제목 요약의 호출 및 비용 제한", () => {
     expect((await service.shorten(f.api, f.agent.id)).changed).toBe(false);
     expect(f.budget.claim).not.toHaveBeenCalled(); expect(f.snapshot).not.toHaveBeenCalled();
   });
+  it("기존 설정은 40자 제한을 유지하고 자동으로 짧은 제목을 호출하지 않는다", async () => {
+    expect(triagePreferences.schema.parse({}).titleLongOnly).toBe(true);
+    const f = fixture(); f.agent.title = "Fix the session restoration bug";
+    service.onTurnEnd(f.api, { ...f.event, title: f.agent.title });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(f.generate).not.toHaveBeenCalled(); expect(f.budget.claim).not.toHaveBeenCalled();
+    expect(f.snapshot).not.toHaveBeenCalled();
+  });
+  it("길이 제한을 끄면 40자 이하 제목도 수동으로 요약한다", async () => {
+    const f = fixture({ titleLongOnly: false }); f.agent.title = "✅ 〖work〗Fix the session restoration bug";
+    expect((await service.shorten(f.api, f.agent.id)).changed).toBe(true);
+    expect(f.generate).toHaveBeenCalledOnce();
+    expect(f.budget.claim).toHaveBeenCalledExactlyOnceWith("session", 5);
+    expect(f.apply).toHaveBeenCalledWith(f.api, "session", f.agent.title, short, expect.any(Function));
+  });
+  it("길이 조건으로 건너뛴 제목이 다음 긴 제목을 1분 대기시키지 않는다", async () => {
+    const f = fixture();
+    service.onTurnEnd(f.api, { ...f.event, id: "short-session", title: "Short title" });
+    service.onTurnEnd(f.api, f.event);
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(f.generate).toHaveBeenCalledOnce(); expect(f.budget.claim).toHaveBeenCalledExactlyOnceWith("session", 5);
+  });
+  it("설정을 바꾸면 캐시된 길이 조건도 바뀌고 다음 완료 이벤트에서 짧은 제목을 처리한다", async () => {
+    const f = fixture(); f.agent.title = "Fix the session restoration bug";
+    service.onTurnEnd(f.api, { ...f.event, title: f.agent.title });
+    await vi.advanceTimersByTimeAsync(2000); expect(f.generate).not.toHaveBeenCalled();
+    f.update({ titleLongOnly: false }); service.onTurnEnd(f.api, { ...f.event, title: f.agent.title });
+    await vi.advanceTimersByTimeAsync(60_000); expect(f.generate).toHaveBeenCalledOnce();
+    expect(f.timeline).not.toHaveBeenCalled(); expect(f.list).not.toHaveBeenCalled();
+  });
+  it("길이 제한을 꺼도 더 짧아질 수 없는 제목과 더 긴 결과에는 비용이나 변경을 추가하지 않는다", async () => {
+    const f = fixture({ titleLongOnly: false }); f.agent.title = "✅ 〖work〗abcd";
+    expect((await service.shorten(f.api, f.agent.id)).changed).toBe(false);
+    expect(f.generate).not.toHaveBeenCalled(); expect(f.budget.claim).not.toHaveBeenCalled();
+    f.agent.title = "Fix session bug";
+    expect((await service.shorten(f.api, f.agent.id)).changed).toBe(false);
+    expect(f.generate).toHaveBeenCalledOnce(); expect(f.apply).not.toHaveBeenCalled();
+  });
   it.each(["archived", "subagent", "internal", "running", "permission", "error"])("제외 상태 %s에서는 모델 호출을 하지 않는다", async (kind) => {
     const f = fixture();
     if (kind === "archived") f.agent.archivedAt = new Date().toISOString();
