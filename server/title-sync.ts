@@ -25,7 +25,8 @@ export class TitleSync {
   private retryAt = 0;
   private writes: Promise<unknown> = Promise.resolve();
   constructor(private readonly settings: Settings, private readonly rename: (id: string, title: string) => Promise<void>,
-    private readonly accepted: (agent: PaseoAgent, row: TriageRow) => void, private readonly failed: () => void, private readonly now = Date.now) {}
+    private readonly accepted: (agent: PaseoAgent, row: TriageRow) => void, private readonly failed: () => void, private readonly now = Date.now,
+    private readonly classify: (agent: PaseoAgent, timeline?: readonly AgentTimelineItem[]) => TriageRow = classifyAgent) {}
   request(api: PaseoApi, id: string, timeline?: readonly AgentTimelineItem[], seed?: PaseoAgent, subagent = false): void {
     if (this.stopped || this.config?.renameTitles === false) return;
     if ((subagent || seed?.labels["paseo.parent-agent-id"]) && !this.config?.includeSubagents) return;
@@ -97,7 +98,7 @@ export class TitleSync {
     const subagent = !!agent.labels["paseo.parent-agent-id"];
     if (subagent && !this.config.includeSubagents) return;
     if (!work.timeline && this.applied.get(agent.id) === signature(agent)) return;
-    let row = classifyAgent(agent, work.timeline);
+    let row = this.classify(agent, work.timeline);
     const desired = desiredTitle(row);
     if (desired !== agent.title) {
       if (!valid()) return;
@@ -105,7 +106,7 @@ export class TitleSync {
       if (!valid()) return;
       agent = (await handle.refresh())?.agent;
       if (!agent || agent.archivedAt || !valid()) return;
-      row = classifyAgent(agent, work.timeline);
+      row = this.classify(agent, work.timeline);
       if (desiredTitle(row) !== agent.title) { this.request(work.api, work.id, work.timeline); return; }
     }
     this.accepted(agent, row);
