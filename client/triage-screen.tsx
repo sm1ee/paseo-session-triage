@@ -48,7 +48,7 @@ function TriageSessionRow({ row, theme, compact, onOpen, onInspect, inspecting, 
   );
 }
 
-export function TriageScreen({ theme, layout, navigation }: PluginScreenProps) {
+export function TriageScreen({ theme, layout, navigation, onOpenSettings }: PluginScreenProps & { onOpenSettings: () => void }) {
   const fetchSnapshot = useRpc(triageSnapshotRpc);
   const inspect = useRpc(triageInspectRpc);
   const [inspecting, setInspecting] = useState<string | null>(null);
@@ -106,7 +106,12 @@ export function TriageScreen({ theme, layout, navigation }: PluginScreenProps) {
             {checked ? `${rows.length} sessions · Checked ${checked}` : "Checking sessions…"}
           </Text>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open Session triage settings" onPress={onOpenSettings}
+          style={({ pressed }) => ({ minHeight: layout.compact ? 44 : 32, justifyContent: "center", paddingHorizontal: 10,
+            borderRadius: 6, backgroundColor: pressed ? theme.colors.surface2 : "transparent" })}>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>Settings</Text>
+        </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Icon guide" accessibilityState={{ expanded: showGuide }} onPress={() => setShowGuide(!showGuide)}
           style={({ pressed }) => ({ minHeight: layout.compact ? 44 : 32, justifyContent: "center", paddingHorizontal: 10,
             borderRadius: 6, backgroundColor: showGuide || pressed ? theme.colors.surface2 : "transparent" })}>

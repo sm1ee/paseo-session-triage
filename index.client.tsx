@@ -1,4 +1,4 @@
-import type { PluginClientContext, PluginSidebarItemProps } from "@getpaseo/plugin/client";
+import type { PluginClientContext, PluginScreenProps, PluginSidebarItemProps } from "@getpaseo/plugin/client";
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { Alert, Platform, Text } from "react-native";
 import { TriageScreen, useTriageAttentionCount } from "./client/triage-screen";
@@ -18,7 +18,10 @@ function TriageItem({ currentScreen, openScreen, theme }: PluginSidebarItemProps
 }
 
 export default function contribute(client: PluginClientContext) {
-  const removeScreen = client.addScreen({ id: "triage", title: "Session triage", Component: TriageScreen });
+  function Screen(props: PluginScreenProps) {
+    return <TriageScreen {...props} onOpenSettings={() => client.openSettings("triage-settings")} />;
+  }
+  const removeScreen = client.addScreen({ id: "triage", title: "Session triage", Component: Screen });
   const removeSidebar = Platform.OS === "web" ? client.addSidebarHeaderItem({
     id: "triage",
     title: "Session triage",
