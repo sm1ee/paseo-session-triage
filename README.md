@@ -28,7 +28,7 @@ Pending permission requests come from Paseo. Requests found in chat are inferred
 Requires stable Paseo 0.11.4 or later. Install the tagged GitHub version:
 
 ```sh
-paseo plugin add git:sm1ee/paseo-session-triage --ref v0.4.1
+paseo plugin add git:sm1ee/paseo-session-triage --ref v0.4.2
 paseo plugin ls session-triage
 ```
 
@@ -46,7 +46,7 @@ Open **Session triage → Settings → Session titles**, choose a **Title model*
 - Automatic and manual attempts share the default daily cap of **5 requests**, adjustable from 1 to 50 and reset at midnight UTC. Failed or cancelled attempts remain spent. Periodic updates and explicit manual regeneration can repeat within the same daily quota; failed requests are never automatically retried for the same completion. This is a request cap, not a monetary budget. Provider instructions and runtime overhead can still add tokens; choose a small model if cost matters.
 - The model picker has local search, Provider filters, and a virtualized scrolling list for mobile. Reasoning defaults to off/none where supported, then minimal, low, or the lowest remaining named level. Explicit reasoning choices are respected.
 - The selected model is used without automatic fallback. Automatic jobs run one at a time, at most once per minute. Invalid results keep the original title. New turns cancel conversation-based generation. A verified unchanged running Goal can keep its title job across native turns without interrupting the session. Settings changes and archiving cancel pending work and discard late results.
-- A dedicated background workspace with an empty context directory is reused for title requests. Each request creates one restricted internal helper session and removes it afterward. Internal helpers do not trigger completion or permission push notifications. The empty workspace remains for reuse. The plugin never sends title prompts to, resumes, pauses, or interrupts existing sessions or goals.
+- A dedicated background workspace with an empty context directory is reused for title requests. Each request creates one restricted helper session as a child of its target and removes it afterward. Paseo suppresses attention pushes for delegated child sessions. The plugin verifies the parent label before sending any title prompt. The empty workspace remains for reuse. The plugin never sends title prompts to, resumes, pauses, or interrupts existing sessions or goals.
 - Status icons and folder prefixes are preserved. Names edited during generation are kept. A workspace title matching the old session title is updated with it; independently named workspaces are preserved. Excerpts are not written to plugin files or logs, though the selected provider receives the chosen goal objective or excerpts in Active goal or recent work mode. Goal state is checked again before saving; a stopped or changed goal discards the result.
 
 Paseo 0.13 already generates titles for new **workspaces** and lets you select its model under **Settings → Host → Metadata** ([Paseo documentation](https://paseo.sh/docs/metadata-generation)). That setting also covers branch, commit, and pull request metadata. This plugin's toggle controls only session-title generation; it does not disable Paseo's own metadata generation.
